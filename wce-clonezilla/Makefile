@@ -18,7 +18,8 @@ LIVEPATCHES := \
  fsimage/etc/ocs/ocs-live.conf \
  fsimage/etc/default/console-setup \
  fsimage/opt/drbl/sbin/ocs-live-wce \
- fsimage/opt/drbl/conf/drbl.conf
+ fsimage/opt/drbl/conf/drbl.conf \
+ fsimage/etc/apt/sources.list
 
 
 SOURCES := \
@@ -46,6 +47,8 @@ fsimage: extract-cd
 	sudo cp -pR fsimage-temp/* ./fsimage
 	sudo umount fsimage-temp
 	rmdir fsimage-temp
+	sudo ./add-packages.sh
+
 
 fsimage/wce.py: wce/install-ubuntu.py
 	sudo cp $< $@
@@ -60,6 +63,9 @@ fsimage/opt/drbl/sbin/ocs-live-wce: wce/ocs-live-wce
 	sudo install -m 755 $< $@
 
 fsimage/opt/drbl/conf/drbl.conf: wce/drbl.conf
+	sudo cp $< $@
+
+fsimage/etc/apt/sources.list: wce/sources.list
 	sudo cp $< $@
 
 
@@ -109,3 +115,5 @@ tftp: /var/lib/tftpboot/wce/live/filesystem.size \
 clean:
 	sudo rm -fR extract-cd fsimage fsimage-temp clonezilla_live
 	rm -f wce/filesystem.packages wce/filesystem.size
+
+
