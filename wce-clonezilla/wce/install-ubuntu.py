@@ -1059,16 +1059,41 @@ def triage():
     triage_result = True
     
     subprocess.call("clear", shell=True)
-    print "CPU: P%d  - %d cores, Speed %dMhz  Bogomips: %s" % (cpu_class, cpu_cores, cpu_speed, bogomips)
-    print "     %s: %s" % (cpu_vendor, model_name)
-    print ""
+    print "CPU Level: P%d" % (cpu_class)
+    print "CPU Speed: Speed %dMhz" % (cpu_speed)
+    print "Additional CPU information"
+    print "--------------------------"
+    print "Cores: %d cores, Bogomips: %s  %s: %s" % (cpu_cores,bogomips,cpu_vendor, model_name)
+    print "--------------------------"
     if memory_size < 200:
-        print "Memory: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
+        print "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
         triage_result = False
     else:
-        print "Memory: %dMbytes" % (memory_size)
+        print "RAM Size: %dMbytes" % (memory_size)
         pass
     print ""
+    if len(disks) == 0:
+        print "Hard Drive: NOT DETECTED -- INSTALL A DISK"
+        triage_result = False
+    else:
+        print "Hard Drive:"
+        good_disk = False
+        for disk in disks:
+            if (disk.size / 1000) >= 20:
+                good_disk = True
+                pass
+            print "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
+            pass
+        if not good_disk:
+            triage_result = False
+            pass
+        pass
+    print "Optical Disk:"
+    print ""
+    print "---------------------------------"
+    print " Additional System Information"
+    print "---------------------------------"
+    print " "
     print "Video:"
     if n_nvidia > 0:
         print "     nVidia video card = %d" % n_nvidia
@@ -1098,23 +1123,7 @@ def triage():
         print "Sound card: NOT DETECTED -- INSTALL SOUND CARD"
         triage_result = False
         pass
-    print ""
-    if len(disks) == 0:
-        print "Disks: NOT DETECTED -- INSTALL A DISK"
-        triage_result = False
-    else:
-        print "Disks:"
-        good_disk = False
-        for disk in disks:
-            if (disk.size / 1000) >= 20:
-                good_disk = True
-                pass
-            print "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
-            pass
-        if not good_disk:
-            triage_result = False
-            pass
-        pass
+    
     return triage_result
 
 
