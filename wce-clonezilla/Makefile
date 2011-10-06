@@ -100,7 +100,7 @@ gpg-key:
 	wget -q http://drbl.sourceforge.net/GPG-KEY-DRBL -O- | sudo apt-key add -
 
 
-/var/lib/tftpboot/wce/live/% : /home/ntai/wce/wce-clonezilla/extract-cd/live/%
+/var/lib/tftpboot/wce/live/% : extract-cd/live/%
 	sudo cp -p $< $@
 
 tftp: /var/lib/tftpboot/wce/live/filesystem.size \
