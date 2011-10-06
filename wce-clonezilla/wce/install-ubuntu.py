@@ -1187,7 +1187,7 @@ def triage():
     print "CPU Speed: %dMhz" % (cpu_speed)
     print "Additional CPU information"
     print "--------------------------"
-    print "  %s: Cores: %d cores, Bogomips: %s  %s" % (model_name, cpu_cores, bogomips)
+    print "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
     print "--------------------------"
     if memory_size < 200:
         print "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
