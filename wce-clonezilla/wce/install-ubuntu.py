@@ -1185,17 +1185,13 @@ def triage():
     subprocess.call("clear", shell=True)
     print "CPU Level: P%d" % (cpu_class)
     print "CPU Speed: %dMhz" % (cpu_speed)
-    print "Additional CPU information"
-    print "--------------------------"
     print "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
-    print "--------------------------"
     if memory_size < 200:
         print "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
         triage_result = False
     else:
         print "RAM Size: %dMbytes" % (memory_size)
         pass
-    print ""
     if len(disks) == 0:
         print "Hard Drive: NOT DETECTED -- INSTALL A DISK"
         triage_result = False
@@ -1213,7 +1209,6 @@ def triage():
             pass
         pass
 
-    print ""
     optical_drives = detect_optical_drives()
     if len(optical_drives) == 0:
         print "Optical drive: ***** NO OPTICALS: INSTALL OPTICAL DRIVE *****"
@@ -1228,11 +1223,6 @@ def triage():
             pass
         pass
 
-    print ""
-    print "---------------------------------"
-    print " Additional System Information"
-    print "---------------------------------"
-    print " "
     print "Video:"
     if n_nvidia > 0:
         print "     nVidia video card = %d" % n_nvidia
@@ -1248,14 +1238,12 @@ def triage():
         triage_result = False
         pass
 
-    print ""
     if ethernet_detected:
         print "Ethernet card: detected"
     else:
         print "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
         triage_result = False
         pass
-    print ""
     if sound_dev:
         print "Sound card: detected"
     else:
