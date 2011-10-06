@@ -422,6 +422,52 @@ class disk:
     pass
 
 
+class optical_drive:
+    def __init__(self):
+        self.device_name = None
+        self.features = []
+        self.model_name = ""
+        self.vendor = ""
+        pass
+
+    def get_feature_string(self, sep):
+        self.features.sort()
+        cd = []
+        dvd = []
+        rest = []
+        for feature in self.features:
+            if feature[0:2] == "CD":
+                if len(feature[2:]) > 0:
+                    cd.append(feature[2:])
+                    pass
+                else:
+                    cd.append("CD")
+                    pass
+                pass
+            elif feature[0:3] == "DVD":
+                if len(feature[3:]) > 0:
+                    dvd.append(feature[3:])
+                    pass
+                else:
+                    dvd.append("DVD")
+                    pass
+                pass
+            else:
+                rest.append(feature)
+                pass
+            pass
+        features = []
+        if len(cd) > 0:
+            features.append(" ".join(cd))
+            pass
+        if len(dvd) > 0:
+            features.append(" ".join(dvd))
+            pass
+        return ", ".join(features + rest)
+
+    pass
+
+
 def chroot_and_exec(things_to_do):
     print "chroot and execute"
     try:
@@ -502,9 +548,21 @@ def parse_parted_size(size_string):
 
 
 #
-def find_device_files(devpath):
+def find_disk_device_files(devpath):
     result = []
     for letter in "abcdefghijklmnopqrstuvwxyz":
+        device_file = devpath + letter
+        if os.path.exists(device_file):
+            result.append(device_file)
+        else:
+            break
+        pass
+    return result
+
+
+def find_optical_device_files(devpath):
+    result = []
+    for letter in "0123456789":
         device_file = devpath + letter
         if os.path.exists(device_file):
             result.append(device_file)
@@ -569,7 +627,7 @@ def get_disks(list_mounted_disks):
         pass
 
     # Gather up the possible disks
-    possible_disks = find_device_files("/dev/hd") + find_device_files("/dev/sd")
+    possible_disks = find_disk_device_files("/dev/hd") + find_disk_device_files("/dev/sd")
     
     for disk_name in possible_disks:
         # Let's out right skip the mounted disk
@@ -676,6 +734,72 @@ def get_disks(list_mounted_disks):
         pass
 
     return disks
+
+
+def detect_optical_drives():
+    opticals = []
+
+    # Gather up the possible devices
+    possible_opticals = find_optical_device_files("/dev/sr")
+    
+    for optical in possible_opticals:
+        current_optical = None
+        features = []
+        is_cd = False
+        vendor = ""
+        model_name = ""
+        try:
+            udevadm = subprocess.Popen("udevadm info --query=property --name=%s" % optical, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            (out, err) = udevadm.communicate()
+            for line in out.split("\n"):
+                elems = line.split('=')
+                tag = string.strip(elems[0])
+                value = string.strip(elems[1])
+                if tag == "ID_TYPE":
+                    if value.lower() == "cd":
+                        current_optical = optical_drive()
+                        pass
+                    pass
+                elif tag == "ID_CDROM":
+                    if value == "1":
+                        is_cd = True
+                        pass
+                    pass
+                elif tag[0:9] == "ID_CDROM_":
+                    if value == "1":
+                        feature = tag[9:].replace('_', '-')
+                        if feature == "DVD-PLUS-R":
+                            features.append("DVD+R")
+                        elif feature == "DVD-PLUS-RW":
+                            features.append("DVD+RW")
+                        elif feature == "DVD-PLUS-R-DL":
+                            features.append("DVD+R(DL)")
+                        else:
+                            features.append(feature)
+                            pass
+                        pass
+                    pass
+                elif tag == "ID_VENDOR":
+                    vendor = value
+                elif tag == "ID_MODEL":
+                    model_name = value
+                    pass
+                pass
+            pass
+        except:
+            pass
+
+        if is_cd and (current_optical != None):
+            current_optical.features = features
+            current_optical.vendor = vendor
+            current_optical.model_name = model_name
+            opticals.append(current_optical)
+            pass
+        pass
+        
+    return opticals
+
+
 
 
 def mount_usb_disks():
@@ -1060,10 +1184,10 @@ def triage():
     
     subprocess.call("clear", shell=True)
     print "CPU Level: P%d" % (cpu_class)
-    print "CPU Speed: Speed %dMhz" % (cpu_speed)
+    print "CPU Speed: %dMhz" % (cpu_speed)
     print "Additional CPU information"
     print "--------------------------"
-    print "Cores: %d cores, Bogomips: %s  %s: %s" % (cpu_cores,bogomips,cpu_vendor, model_name)
+    print "  %s: Cores: %d cores, Bogomips: %s  %s" % (model_name, cpu_cores, bogomips)
     print "--------------------------"
     if memory_size < 200:
         print "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
@@ -1088,7 +1212,22 @@ def triage():
             triage_result = False
             pass
         pass
-    print "Optical Disk:"
+
+    print ""
+    optical_drives = detect_optical_drives()
+    if len(optical_drives) == 0:
+        print "Optical drive: ***** NO OPTICALS: INSTALL OPTICAL DRIVE *****"
+        triage_result = False
+    else:
+        print "Optical drive:"
+        index = 1
+        for optical in optical_drives:
+            print "    %d: %s %s" % (index, optical.vendor, optical.model_name)
+            print "       %s" % (optical.get_feature_string(", "))
+            index = index + 1
+            pass
+        pass
+
     print ""
     print "---------------------------------"
     print " Additional System Information"
