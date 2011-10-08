@@ -47,6 +47,7 @@ fsimage: extract-cd
 	sudo cp -pR fsimage-temp/* ./fsimage
 	sudo umount fsimage-temp
 	rmdir fsimage-temp
+	sudo make fsimage/etc/apt/sources.list
 	sudo ./add-packages.sh
 
 

@@ -1172,7 +1172,7 @@ def detect_cpu_type():
     return cpu_class, cpu_cores, max_processor + 1, cpu_vendor, model_name, bogomips, cpu_speed
 
 
-def triage():
+def triage(output):
     global mounted_devices
     cpu_class, cpu_cores, n_processors, cpu_vendor, model_name, bogomips, cpu_speed = detect_cpu_type()
     memory_size = get_memory_size()
@@ -1183,26 +1183,26 @@ def triage():
     triage_result = True
     
     subprocess.call("clear", shell=True)
-    print "CPU Level: P%d" % (cpu_class)
-    print "CPU Speed: %dMhz" % (cpu_speed)
-    print "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
+    print >> output, "CPU Level: P%d" % (cpu_class)
+    print >> output, "CPU Speed: %dMhz" % (cpu_speed)
+    print >> output, "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
     if memory_size < 200:
-        print "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
+        print >> output, "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
         triage_result = False
     else:
-        print "RAM Size: %dMbytes" % (memory_size)
+        print >> output, "RAM Size: %dMbytes" % (memory_size)
         pass
     if len(disks) == 0:
-        print "Hard Drive: NOT DETECTED -- INSTALL A DISK"
+        print >> output, "Hard Drive: NOT DETECTED -- INSTALL A DISK"
         triage_result = False
     else:
-        print "Hard Drive:"
+        print >> output, "Hard Drive:"
         good_disk = False
         for disk in disks:
             if (disk.size / 1000) >= 20:
                 good_disk = True
                 pass
-            print "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
+            print >> output, "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
             pass
         if not good_disk:
             triage_result = False
@@ -1211,27 +1211,27 @@ def triage():
 
     optical_drives = detect_optical_drives()
     if len(optical_drives) == 0:
-        print "Optical drive: ***** NO OPTICALS: INSTALL OPTICAL DRIVE *****"
+        print >> output, "Optical drive: ***** NO OPTICALS: INSTALL OPTICAL DRIVE *****"
         triage_result = False
     else:
-        print "Optical drive:"
+        print >> output, "Optical drive:"
         index = 1
         for optical in optical_drives:
-            print "    %d: %s %s" % (index, optical.vendor, optical.model_name)
-            print "       %s" % (optical.get_feature_string(", "))
+            print >> output, "    %d: %s %s" % (index, optical.vendor, optical.model_name)
+            print >> output, "       %s" % (optical.get_feature_string(", "))
             index = index + 1
             pass
         pass
 
-    print "Video:"
+    print >> output, "Video:"
     if n_nvidia > 0:
-        print "     nVidia video card = %d" % n_nvidia
+        print >> output, "     nVidia video card = %d" % n_nvidia
         pass
     if n_ati > 0:
-        print "     ATI video card = %d" % n_ati
+        print >> output, "     ATI video card = %d" % n_ati
         pass
     if n_vga > 0:
-        print "     Some video card = %d" % n_vga
+        print >> output, "     Some video card = %d" % n_vga
         pass
 
     if (n_nvidia + n_ati + n_vga) <= 0:
@@ -1239,15 +1239,15 @@ def triage():
         pass
 
     if ethernet_detected:
-        print "Ethernet card: detected"
+        print >> output, "Ethernet card: detected"
     else:
-        print "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
+        print >> output, "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
         triage_result = False
         pass
     if sound_dev:
-        print "Sound card: detected"
+        print >> output, "Sound card: detected"
     else:
-        print "Sound card: NOT DETECTED -- INSTALL SOUND CARD"
+        print >> output, "Sound card: NOT DETECTED -- INSTALL SOUND CARD"
         triage_result = False
         pass
     
@@ -1261,18 +1261,69 @@ def reboot():
 
 
 if __name__ == "__main__":
-    global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path
+    global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path, dlg
+    try:
+        import dialog
+        dlg = dialog.Dialog()
+    except:
+        dlg = None
+        pass
     wce_disk_image_path = ["/live/image/wce-disk-images"]
-    print "Here we go"
-    time.sleep(3)
+
+    # Make sure dialog works
+    if dlg:
+        try:
+            dlg.gauge_start("Thank you for triaging. Please fill the form.", title="World Computer Exchange")
+            time.sleep(1)
+            dlg.gauge_update(1, "Thank you for triaging. Please fill the form.", update_text=1)
+            time.sleep(1)
+            dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
+            time.sleep(1)
+            dlg.gauge_stop()
+        except:
+            dlg = None
+            pass
+        pass
+            
+
+    # time.sleep(3)
     triage_result = True
 
-    while True:
-        triage_result = triage()
+    has_network = get_router_ip_address() != None
 
-        # If there is no router to talk to, I don't have
-        # network. So, just wait for the machine to reboot.
-        if (not get_router_ip_address()) or (not triage_result):
+    while True:
+        # I do this extra work so that I can have a temp file.
+        triage_output = open("/tmp/triage.txt", "w")
+        triage_result = triage(triage_output)
+        triage_output.close()
+        result_displayed = False
+
+        if dlg:
+            try:
+                if (not has_network) or (not triage_result):
+                    dlg.textbox("/tmp/triage.txt", width=76, cr_wrap=1, backtitle="Triage Output")
+                    pass
+                else:
+                    try:
+                        dlg.textbox("/tmp/triage.txt", width=76, cr_wrap=1, backtitle="Triage Output", timeout=10)
+                    except:
+                        pass
+                    pass
+                result_displayed = True
+            except Exception, e:
+                pass
+            pass
+
+        if not result_displayed:
+            triage_output = open("/tmp/triage.txt")
+            triage_message = triage_output.read()
+            triage_output.close()
+            sys.stdout.write(triage_message)
+            sys.stdout.flush()
+            pass
+
+        # If no network, just wait for the machine to reboot.
+        if (not has_network) or (not triage_result):
             print ""
             yes_no = getpass._raw_input("Reboot (i=Install)? ([Y]/n/i) ")
             if ((len(yes_no) == 0) or (yes_no[0].lower() == 'y')):
@@ -1292,7 +1343,7 @@ if __name__ == "__main__":
     mount_usb_disks()
     print ""
     print "HIT RETURN TO HOLD"
-    n = 5
+    n = 10
     step = 1
     while n > 0:
         sin, sout, sx = select.select([sys.stdin.fileno()], [], [], 1)
