@@ -1254,6 +1254,99 @@ def triage(output):
     return triage_result
 
 
+def detect_sensor_modules(modules_path):
+    if modules_path:
+        modules = open(modules_path)
+        lines = modules.readlines()
+        modules.close()
+        its_there = False
+        for line in lines:
+            if line == '# LM-SENSORS\n':
+                its_there = True
+                break
+            pass
+        if its_there:
+            return
+        pass
+
+    drivers = []
+    sd = subprocess.Popen("cat /dev/null | sensors-detect", shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    (out, err) = sd.communicate()
+    look_for_chip_driver = 0
+    for line in out.split('\n'):
+        if look_for_chip_driver == 0:
+            if line == '#----cut here----':
+                look_for_chip_driver = 1
+                pass
+            pass
+        elif look_for_chip_driver == 1:
+            if line == '# Chip drivers':
+                look_for_chip_driver = 2
+                pass
+            pass
+        elif look_for_chip_driver == 2:
+            if line == '#----cut here----':
+                look_for_chip_driver = 0
+            else:
+                drivers.append(line)
+                pass
+            pass
+        pass
+
+    if len(drivers) > 0:
+        if modules_path:
+            modules = open(modules_path, 'a+')
+            modules.write("# LM-SENSORS\n%s\n#\n" % "\n".join(drivers))
+            modules.close()
+            pass
+
+        for module in drivers:
+            try:
+                retcode = subprocess.call("modprobe %s" % module, shell=True)
+            except:
+                pass
+            pass
+        pass
+    pass
+
+
+def set_pwm(speed):
+    p = "/sys/devices/platform"
+    re_pwm = re.compile(r'^pwm[0-9]$')
+    re_pwm_enable = re.compile(r'^pwm[0-9]_enable$')
+
+    for node in os.listdir(p):
+        pnode = os.path.join(p, node)
+        nodes = []
+        try:
+            nodes = os.listdir(pnode)
+        except:
+            nodes = []
+            pass
+        for pdev in nodes:
+            if re_pwm.match(pdev):
+                ppath = os.path.join(pnode, pdev)
+                pwm = open(ppath, "w")
+                pwm.write("%d" % speed)
+                pwm.close()
+                pass
+            if re_pwm_enable.match(pdev):
+                ppath = os.path.join(pnode, pdev)
+                pwm = open(ppath, "w")
+                pwm.write("1")
+                pwm.close()
+                pass
+            pass
+        pass
+    pass
+        
+
+if __name__ == "__main__":
+    detect_sensor_modules('/etc/modules')
+    set_pwm(144)
+    pass
+
+
 def reboot():
     subprocess.call("reboot", shell=True)
     pass
@@ -1269,6 +1362,10 @@ if __name__ == "__main__":
         dlg = None
         pass
     wce_disk_image_path = ["/live/image/wce-disk-images"]
+
+    # To save my sanity
+    detect_sensor_modules(None)
+    set_pwm(144)
 
     # Make sure dialog works
     if dlg:
@@ -1314,6 +1411,7 @@ if __name__ == "__main__":
                 pass
             pass
 
+        # Backup method to display text
         if not result_displayed:
             triage_output = open("/tmp/triage.txt")
             triage_message = triage_output.read()
