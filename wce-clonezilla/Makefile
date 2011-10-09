@@ -3,7 +3,10 @@
 #
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
+#ISOTARGET := wce-clonezilla-v0.45-2011-10.iso
 ISOTARGET := wce-clonezilla-v0.45-lite.iso
+#UDF_FLAGS := -udf -allow-limited-size -iso-level 3
+UDF_FLAGS :=
 
 default: fsimage $(ISOTARGET)
 
@@ -93,7 +96,7 @@ extract-cd/live/filesystem.squashfs: $(LIVEPATCHES)
 
 
 $(ISOTARGET): $(SOURCES)
-	cd extract-cd;sudo mkisofs -D -r -V "$$IMAGE_NAME" -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o ../$(ISOTARGET) .
+	cd extract-cd;sudo genisoimage $(UDF_FLAGS) -D -r -V "$$IMAGE_NAME" -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o ../$(ISOTARGET) .
 
 
 gpg-key:

@@ -1086,8 +1086,6 @@ def main():
     pass
 
 
-
-
 def parse_cpu_info_tag_value(line):
     try:
         elems = line.split(":")
@@ -1340,12 +1338,6 @@ def set_pwm(speed):
         pass
     pass
         
-
-if __name__ == "__main__":
-    detect_sensor_modules('/etc/modules')
-    set_pwm(144)
-    pass
-
 
 def reboot():
     subprocess.call("reboot", shell=True)

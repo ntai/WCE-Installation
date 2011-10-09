@@ -22,5 +22,5 @@ deb http://security.ubuntu.com/ubuntu maverick-security universe
 deb-src http://security.ubuntu.com/ubuntu maverick-security universe
 deb http://security.ubuntu.com/ubuntu maverick-security multiverse
 deb-src http://security.ubuntu.com/ubuntu maverick-security multiverse
-deb http://drbl.sourceforge.net/drbl-core drbl stable
 deb http://download.virtualbox.org/virtualbox/debian maverick contrib non-free
+deb http://drbl.sourceforge.net/drbl-core drbl stable
