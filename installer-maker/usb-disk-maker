@@ -1,0 +1,646 @@
+#!/usr/bin/env python
+
+import os, sys, subprocess, string, re, traceback, time, shutil
+
+try:
+    import dialog
+except:
+    print 'python-dialog package is not installed. Try'
+    print '  sudo apt-get install ptyhon-dialog'
+    sys.exit(1)
+    pass
+
+disk1_re = re.compile(r"Disk /dev/[^:]+:\s+\d+\.\d*\s+[KMG]B, (\d+) bytes")
+disk2_re = re.compile(r"\d+ heads, \d+ sectors/track, \d+ cylinders, total (\d+) sectors")
+disk3_re = re.compile(r"Units = sectors of \d+ * \d+ = (\d+) bytes")
+part_re = re.compile(r"([^\s]+)\s+\*{0,1}\s+\d+\s+\d+\s+\d+\s+([\dA-Fa-f]+)\s+")
+
+indentstr = "                                                                                          "
+
+class node:
+    def __init__(self, parent, name):
+        self.total_size = 0
+        self.file_size = 0
+        self.parent = parent
+        self.files = []
+        self.dirs = []
+        self.path = None
+        self.name = name
+        self.destination = None
+        pass
+
+    def get_full_path(self):
+        if not self.path:
+            self.path = os.path.join(self.parent.get_full_path(), self.name)
+            pass
+        return self.path
+
+    def walk(self):
+        path = self.get_full_path()
+        for entry in os.listdir(path):
+            entry_path = os.path.join(path, entry)
+            if os.path.isfile(entry_path):
+                self.file_size = self.file_size + os.path.getsize(entry_path)
+                self.files.append(entry)
+                pass
+            elif os.path.isdir(entry_path):
+                self.dirs.append(node(self, entry))
+                pass
+            pass
+        for dir in self.dirs:
+            dir.walk()
+            pass
+        pass
+
+    def get_total_file_size(self):
+        size = self.file_size
+        for dir in self.dirs:
+            size = size + dir.file_size
+            pass
+        return size
+
+
+    def set_destination(self, destnode, walk):
+        if self.destination != None:
+            return
+        self.destination = destnode
+        self.destination.total_size = self.total_size
+        self.destination.file_size = self.file_size
+        self.destination.files = self.files
+        if walk:
+            for dir in self.dirs:
+                partner = node(destnode, dir.name)
+                self.destination.dirs.append(partner)
+                dir.set_destination(partner, True)
+                pass
+            pass
+        pass
+
+
+    def print_plan(self, level):
+        print "%s%s -> %s" % (indentstr[0:level*2], self.get_full_path(), self.destination.get_full_path())
+        print "%sTotal size: %d" % (indentstr[0:level*2], self.file_size)
+        for file in self.files:
+            print "%s%s" % (indentstr[0:level*2], file)
+            pass
+        for dir in self.dirs:
+            dir.print_plan(level+1)
+            pass
+        pass
+
+
+    def get_destination_path(self, file):
+        return os.path.join(self.get_full_path(), file)
+
+
+    def generate_plan(self):
+        plan = []
+        src = self.get_full_path()
+        dst = self.destination.get_full_path()
+        plan.append(('dir', src, dst, 0))
+        for file in self.files:
+            srcfile = os.path.join(src, file)
+            dstfile = self.destination.get_destination_path(file)
+            plan.append(('copy', srcfile, dstfile, os.path.getsize(srcfile)))
+            pass
+        for dir in self.dirs:
+            plan = plan + dir.generate_plan()
+            pass
+        return plan
+
+    pass
+
+
+class root_node(node):
+    def __init__(self, path):
+        self.total_size = 0
+        self.file_size = 0
+        self.parent = None
+        self.files = []
+        self.dirs = []
+        self.path = path
+        self.name = None
+        self.destination = None
+        pass
+    
+
+    def get_full_path(self):
+        return self.path
+
+    def print_plan(self, level):
+        node.print_plan(self, level)
+        print "Grand total: %d" % self.get_total_file_size()
+        pass
+
+    pass
+
+
+class syslinux_node(node):
+    def __init__(self, parent, name):
+        self.total_size = 0
+        self.file_size = 0
+        self.parent = parent
+        self.files = []
+        self.dirs = []
+        self.path = None
+        self.name = name
+        self.destination = None
+        pass
+
+    def get_destination_path(self, file):
+        if file == "isolinux.cfg":
+            return os.path.join(self.get_full_path(), "syslinux.cfg")
+        elif file == "isolinux.bin":
+            return os.path.join(self.get_full_path(), "syslinux.bin")
+        return os.path.join(self.get_full_path(), file)
+
+    pass
+
+
+def make_copy_plan(srcdir, destdir):
+    root = root_node(srcdir)
+    root.walk()
+    destroot = root_node(destdir)
+    root.set_destination(destroot, False)
+    # need to filter out syslinux
+    dirs = []
+    for dir in root.dirs:
+        if dir.name == "isolinux":
+            dir.set_destination(syslinux_node(destroot, "syslinux"), True)
+            dirs.append(dir)
+        elif dir.name == "syslinux":
+            continue
+        else:
+            dir.set_destination(node(destroot, dir.name), True)
+            dirs.append(dir)
+            pass
+        pass
+    # dirs holds the dirs without syslinux
+    root.dirs = dirs
+    return root.generate_plan()
+
+
+def execute_copy_plan(plan):
+    global dlg
+    total_cost = 0
+    for step in plan:
+        if step[0] == 'dir':
+            cost = 2
+        else:
+            cost = (step[3] + 4095) / 4096 + 1 
+            pass
+        total_cost = total_cost + cost
+        pass
+    
+    dlg.gauge_start("Copying: 0%", title="Copying bootstrap files")
+    sofar = 0
+    for step in plan:
+        percentage = (100 * sofar) / total_cost
+        dlg.gauge_update(percentage, "Copying %s" % step[2], update_text=1)
+        if step[0] == 'dir':
+            cost = 2
+            if not os.path.exists(step[2]):
+                os.mkdir(step[2])
+                pass
+            shutil.copymode(step[1], step[2])
+        else:
+            cost = (step[3] + 4095) / 4096 + 1 
+            shutil.copy2(step[1], step[2])
+            pass
+        sofar = sofar + cost
+        percentage = (100 * sofar) / total_cost
+        dlg.gauge_update(percentage, "Copying %s" % step[2], update_text=1)
+        pass
+    dlg.gauge_stop()
+    pass
+
+
+def mount_iso_file(iso_file, iso_mount_point):
+    global logfile
+    if not os.path.exists(iso_mount_point):
+        os.mkdir(iso_mount_point)
+        pass
+    print >> logfile, "mount -o loop %s %s" % (iso_file, iso_mount_point)
+    mount = subprocess.Popen(["mount", "-o", "loop", iso_file, iso_mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = mount.communicate()
+    print >> logfile, "mount out: %s" % out
+    print >> logfile, "mount err: %s" % err
+    pass
+
+def unmount_iso_file(iso_file, iso_mount_point):
+    print >> logfile, "umount %s %s" % (iso_file, iso_mount_point)
+    umount = subprocess.Popen(["umount", iso_mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = umount.communicate()
+    print >> logfile, "umount out: %s" % out
+    print >> logfile, "umount err: %s" % err
+    os.rmdir(iso_mount_point)
+    pass
+
+
+class partition:
+    def __init__(self):
+        self.device_name = None
+        self.partition_type = None
+        self.partition_number = None
+        self.partition_name = None
+        pass
+
+    def mkfs(self, name):
+        global logfile
+        mkfs = None
+        if self.partition_type == 'c':
+            mkfs = subprocess.Popen(["mkfs.vfat", "-F", "32", "-n", name, self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        elif self.partition_type == '83':
+            mkfs = subprocess.Popen(["mkfs.ext2", "-b", "4096", "-L", name, self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
+            pass
+        if mkfs:
+            (out, err) = mkfs.communicate()
+            print >> logfile, "mkfs out: %s" % out
+            print >> logfile, "mkfs err: %s" % err
+            pass
+        self.partition_name = name
+        pass
+
+
+    def unmount(self):
+        unmount = subprocess.Popen(["/bin/umount", "-f", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = unmount.communicate()
+        pass
+
+    def get_mount_point(self):
+        return "/media/%s" % self.partition_name
+    
+    def mount(self):
+        mount_point = self.get_mount_point()
+        if not os.path.exists(mount_point):
+            os.mkdir(mount_point)
+            pass
+        subprocess.call(["/bin/mount", self.device_name, mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pass
+
+
+    def install_bootloader(self):
+        global logfile
+        print >> logfile, "syslinux to a partition %s" % self.device_name
+        syslinux = subprocess.Popen(["/usr/bin/syslinux", "-maf", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = syslinux.communicate()
+        print >> logfile, "syslinux out %s" % out
+        print >> logfile, "syslinux err %s" % err
+        pass
+
+    pass
+
+
+class disk:
+    def __init__(self):
+        self.device_name = None
+        self.partitions = []
+        self.disk_type = None
+        self.size = None
+        self.sectors = None
+        self.uuid1 = None
+        self.uuid2 = None
+        self.mounted = False
+        self.is_disk = None
+        self.is_ata_or_scsi = None
+        self.is_usb = None
+        self.vendor = ""
+        self.model_name = ""
+        self.serial_no = ""
+        pass
+
+
+    def get_size(self):
+        if self.size:
+            return self.size
+
+        fdisk = subprocess.Popen(["fdisk", "-l", "-u", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = fdisk.communicate()
+
+        for line in out.split("\n"):
+            if line == "":
+                break
+            m = disk1_re.match(line)
+            if m:
+                self.size = string.atoi(m.group(1))
+                break
+                pass
+            pass
+        return self.size
+
+
+    def start_parted(self):
+        size = self.get_size()
+        sectors = size / 512
+
+        part1_sectors = (750 * 1024 * 1024) / 512
+        part1_start = 2048
+        part1_end = part1_start + part1_sectors - 1
+        part2_start = part1_start + part1_sectors
+        part2_end = sectors - 1 
+
+        args = ["parted", "-s", self.device_name, "unit", "s", "mklabel", "msdos", "mkpart", "primary", "fat32", "%d" % part1_start, "%d" % part1_end, "mkpart", "primary", "ext2", "%d" % part2_start, "%d" % part2_end, "set", "1", "boot", "on" ]
+        return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+    def refresh_partition(self):
+        global dlg
+        # Disk to look at
+        fdisk = subprocess.Popen(["fdisk", "-l", "-u", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = fdisk.communicate()
+        if len(err) > 0:
+            dlg.msgbox(err)
+            return
+
+        looking_for_partition = False
+        self.partitions = []
+
+        for line in out.split("\n"):
+            if looking_for_partition:
+                m = part_re.match(line)
+                if m:
+                    part = partition()
+                    part.device_name = m.group(1)
+                    part.partition_type = m.group(2)
+                    self.partitions.append(part)
+                    pass
+                pass
+            else:
+                if line == "":
+                    looking_for_partition = True
+                    continue
+                pass
+            pass
+        pass
+
+
+    def unmount(self):
+        for part in self.partitions:
+            part.unmount()
+            pass
+        pass
+
+
+    def mount(self):
+        for part in self.partitions:
+            part.mount()
+            pass
+        pass
+
+
+    def find_partition(self, part_name):
+        for part in self.partitions:
+            if part.device_name == part_name:
+                return part
+            pass
+        return None
+
+
+    def install_mbr(self):
+        global logfile
+        print >> logfile, "Install MBR to disk %s" % self.device_name
+        mbr = subprocess.Popen(["/sbin/install-mbr", "-f", "-r", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = mbr.communicate()
+        print >> logfile, "install-mbr out %s" % out
+        print >> logfile, "install-mbr err %s" % err
+        pass
+
+    pass
+
+
+#
+def find_disk_device_files(devpath):
+    result = []
+    for letter in "abcdefghijklmnopqrstuvwxyz":
+        device_file = devpath + letter
+        if os.path.exists(device_file):
+            result.append(device_file)
+        else:
+            break
+        pass
+    return result
+
+# Get USB drives
+def get_usb_disks():
+    usb_disks = []
+
+    # Gather up the possible disks
+    possible_disks = find_disk_device_files("/dev/hd") + find_disk_device_files("/dev/sd")
+    
+    for disk_name in possible_disks:
+        #
+        # Now, I do double check that this is really a disk
+        is_ata_or_scsi = False
+        is_disk = False
+        is_usb = False
+        disk_model = None
+        disk_serial = None
+        disk_vendor = None
+
+        try:
+            udevadm = subprocess.Popen("udevadm info --query=property --name=%s" % disk_name, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            (out, err) = udevadm.communicate()
+            if len(err) > 0:
+                print err
+                pass
+            is_ata_or_scsi = False
+            is_disk = False
+            for line in out.split("\n"):
+                try:
+                    elems = line.split('=')
+                    tag = string.strip(elems[0])
+                    value = string.strip(elems[1])
+                    if tag == "ID_BUS":
+                        if value.lower() == "ata" or value.lower() == "scsi":
+                            is_ata_or_scsi = True
+                            pass
+                        elif value.lower() == "usb":
+                            is_usb = True
+                            pass
+                        pass
+                    elif tag == "ID_TYPE":
+                        if value.lower() == "disk":
+                            is_disk = True
+                            pass
+                        pass
+                    elif tag == "ID_MODEL":
+                        disk_model = value
+                        pass
+                    elif tag == "ID_VENDOR":
+                        disk_vendor = vendor
+                        pass
+                    elif tag == "ID_SERIAL":
+                        disk_serial = value
+                        pass
+                    pass
+                except Exception, e:
+                    traceback.print_tb(None)
+                    pass
+                pass
+            pass
+        except Exception, e:
+            traceback.print_tb(None)
+            pass
+
+        if not is_disk:
+            print "Passed on %s" % disk_name
+            continue
+
+        # Disk to look at
+        current_disk = None
+        fdisk = subprocess.Popen(["fdisk", "-l", "-u", disk_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = fdisk.communicate()
+
+        looking_for_partition = False
+
+        for line in out.split("\n"):
+            if looking_for_partition and current_disk:
+                m = part_re.match(line)
+                if m:
+                    if current_disk:
+                        part = partition()
+                        part.device_name = m.group(1)
+                        part.partition_type = m.group(2)
+                        current_disk.partitions.append(part)
+                        pass
+                    pass
+                pass
+            else:
+                if line == "":
+                    looking_for_partition = True
+                    continue
+                m = disk1_re.match(line)
+                if m:
+                    current_disk = disk()
+                    current_disk.device_name = disk_name
+                    current_disk.size = string.atoi(m.group(1))
+                    pass
+                pass
+            pass
+
+        if current_disk:
+            current_disk.is_ata_or_scsi = is_ata_or_scsi
+            current_disk.is_usb = is_usb
+            current_disk.is_disk = is_disk
+            current_disk.model_name = disk_model
+            current_disk.serial_no = disk_serial
+
+            if is_usb:
+                current_disk.get_size()
+                usb_disks.append(current_disk)
+                pass
+            pass
+        else:
+            print "Did not find the disk %s" % disk_name
+            pass
+        pass
+
+    return usb_disks
+
+
+def main(iso_file):
+    global dlg
+
+    usb_disks = get_usb_disks()
+    if len(usb_disks) == 0:
+        dlg.msgbox("Did not find any USB disks.")
+        return
+    
+    menu = []
+    for disk in usb_disks:
+        menu.append((disk.device_name, "%s %dMB" % (disk.model_name, disk.get_size()/1000000), 0))
+        pass
+    (code, tag) = dlg.checklist(text="Existing contents will be destroyed!",
+                                height=15, width=70, list_height=8, 
+                                choices = menu, title="USB Disk Maker", 
+                                backtitle="World Computer Exchange")
+
+    # code == 1: cancel
+    if code == 1 or len(tag) == 0:
+        return
+
+    iso_mount_point = "/mnt/my_iso.%d" % os.getpid()
+    mount_iso_file(iso_file, iso_mount_point)
+
+    for disk in usb_disks:
+        if not (disk.device_name in tag):
+            continue
+        #
+        disk.unmount()
+        #
+        parted = disk.start_parted()
+        (out, err) = parted.communicate()
+        if len(err) > 0:
+            dlg.msgbox("parted error\n" + err)
+            continue
+
+        disk.refresh_partition()
+        disk.unmount()
+        boot_part = None
+        ext2_part = None
+        for part in disk.partitions:
+            dlg.infobox( "Formatting %s" % part.device_name)
+            if part.partition_type == 'c':
+                boot_part = part
+                part.mkfs("ubuntu")
+            elif part.partition_type == '83':
+                ext2_part = part
+                part.mkfs("casper-rw")
+                pass
+            pass
+        dlg.infobox( "Formatting complete")
+
+        disk.mount()
+        dlg.infobox( "Figuring out copying")
+        plan = make_copy_plan(iso_mount_point, boot_part.get_mount_point())
+        print >> logfile, "===== COPY PLAN ====="
+        print >> logfile, plan
+        print >> logfile, "====================="
+        execute_copy_plan(plan)
+        dlg.infobox( "Finished copying")
+        disk.unmount()
+
+        dlg.infobox( "Installing bootloader to %s" % boot_part.device_name)
+        boot_part.install_bootloader()
+
+        dlg.infobox( "Installing MBR to %s" % disk.device_name)
+        disk.install_mbr()
+        pass
+
+    dlg.infobox( "Unmounting ISO")
+    unmount_iso_file(iso_file, iso_mount_point)
+
+    pass
+
+
+if __name__ == "__main__":
+    global dlg, iso_file, logfile
+    logfile = open("log.txt", "w")
+
+    dlg = dialog.Dialog()
+    iso_file = None
+
+    if os.getuid() != 0:
+        dlg.msgbox("You need to be root to make a USB stick.")
+        sys.exit(1)
+        pass
+
+    if len(sys.argv) > 1:
+        iso_file = sys.argv[1]
+        pass
+    else:
+        (code, iso_file) = dlg.fselect(os.getcwd(), 20, 76)
+        if code != 0:
+            dlg.infobox("No ISO selected.")
+            sys.exit(0)
+            pass
+        pass
+
+    if not os.path.exists(iso_file):
+        dlg.infobox("ISO file %s does not exist." % iso_file)
+        sys.exit(0)
+        pass
+
+    main(iso_file)
+    pass
