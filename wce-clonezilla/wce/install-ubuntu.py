@@ -1393,10 +1393,11 @@ if __name__ == "__main__":
                     dlg.textbox("/tmp/triage.txt", width=76, cr_wrap=1, backtitle="Triage Output")
                     pass
                 else:
-                    try:
-                        dlg.textbox("/tmp/triage.txt", width=76, cr_wrap=1, backtitle="Triage Output", timeout=10)
-                    except:
-                        pass
+                    triage_output = open("/tmp/triage.txt")
+                    report = triage_output.read()
+                    triage_output.close()
+                    dlg.infobox(report, width=76, cr_wrap=1, backtitle="Triage Output")
+                    time.sleep(10)
                     pass
                 result_displayed = True
             except Exception, e:
