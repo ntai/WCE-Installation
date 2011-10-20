@@ -117,6 +117,18 @@ def get_router_ip_address():
     return None
             
 
+def is_network_connected():
+    connected = False
+    try:
+        carrier = open("/sys/class/net/eth0/carrier")
+        carrier_state = carrier.read()
+        carrier.close()
+        connected = string.atoi(carrier_state) == 1
+    except:
+        pass
+    return connected
+            
+
 class partition:
     def __init__(self):
         self.partition_name = None
@@ -538,6 +550,60 @@ def get_memory_size():
     s = string.atoi(re.findall("MemTotal:\s+ (\d+) kB\n", meminfo.readline())[0]) / 1024
     meminfo.close()
     return s
+
+re_smbios_present = re.compile(r'\s*SMBIOS \d+\.\d+ present.')
+re_memory_module_information = re.compile(r'Memory Module Information')
+re_socket_designation = re.compile(r'\s*Socket Designation: ([\w\d]+)')
+re_enabled_size = re.compile(r'\s*Enabled Size: (\d+) MB')
+re_error_status = re.compile(r'\sError Status: (\w+)')
+
+def get_ram_info():
+    dmidecode = subprocess.Popen('dmidecode -t 6', shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    (out, err) = dmidecode.communicate()
+    # To gurantee the last line flushes out
+    out = out + '\n'
+    rams = []
+    parse_state = 0
+    for line in out.split('\n'):
+        if parse_state == 0:
+            m = re_smbios_present.match(line)
+            if m:
+                parse_state = 1
+                pass
+            pass
+        elif parse_state == 1:
+            m = re_memory_module_information.match(line)
+            if m:
+                parse_state = 2
+                socket_designation = ""
+                enabled_size = 0
+                memory_status = True
+                pass
+            pass
+        elif parse_state == 2:
+            if len(line.strip()) == 0:
+                rams.append( (socket_designation, enabled_size, memory_status) )
+                parse_state = 1
+                continue
+
+            m = re_socket_designation.match(line)
+            if m:
+                socket_designation = m.group(1)
+                pass
+
+            m = re_enabled_size.match(line)
+            if m:
+                enabled_size = string.atoi(m.group(1))
+                pass
+
+            m = re_error_status.match(line)
+            if m:
+                memory_status = m.group(1).upper() == "OK"
+                pass
+            pass
+        pass
+    return rams
+
 
 # returns size in MB
 def parse_parted_size(size_string):
@@ -1174,13 +1240,33 @@ def detect_cpu_type():
     elif cpu_mmx:
         cpu_class = 2
         pass
+
+    # Patch up the CPU speed. cpuinfo seems to show the current CPU speed,
+    # not the max speed
+    cpuinfo_max_freq = "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
+    if os.path.exists(cpuinfo_max_freq):
+        f = open(cpuinfo_max_freq)
+        speed = f.read()
+        f.close()
+        cpu_speed = string.atol(speed) / 1000
+        pass
+
     return cpu_class, cpu_cores, max_processor + 1, cpu_vendor, model_name, bogomips, cpu_speed
 
 
 def triage(output):
     global mounted_devices
     cpu_class, cpu_cores, n_processors, cpu_vendor, model_name, bogomips, cpu_speed = detect_cpu_type()
-    memory_size = get_memory_size()
+    # Try getting memory from dmidecode
+    rams = get_ram_info()
+    total_memory = 0
+    for ram in rams:
+        total_memory = total_memory + ram[1]
+        pass
+    # backup method
+    if total_memory == 0:
+        total_memory = get_memory_size()
+        pass
     disks = get_disks(True)
     n_nvidia, n_ati, n_vga = detect_video_cards()
     sound_dev = detect_sound_device()
@@ -1188,15 +1274,22 @@ def triage(output):
     triage_result = True
     
     subprocess.call("clear", shell=True)
-    print >> output, "CPU Level: P%d" % (cpu_class)
-    print >> output, "CPU Speed: %dMhz" % (cpu_speed)
+    print >> output, "CPU Level: P%d - %dMhz" % (cpu_class, cpu_speed)
     print >> output, "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
-    if memory_size < 200:
-        print >> output, "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (memory_size)
+    if total_memory < 200:
+        print >> output, "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (total_memory)
         triage_result = False
     else:
-        print >> output, "RAM Size: %dMbytes" % (memory_size)
+        print >> output, "RAM Size: %dMbytes" % (total_memory)
         pass
+    if len(rams) > 0:
+        slots = "    "
+        for ram in rams:
+            slots = slots + "  %s: %d MB" % (ram[0], ram[1])
+            pass
+        print >> output, slots
+        pass
+        
     if len(disks) == 0:
         print >> output, "Hard Drive: NOT DETECTED -- INSTALL A DISK"
         triage_result = False
@@ -1329,17 +1422,25 @@ def set_pwm(speed):
             nodes = []
             pass
         for pdev in nodes:
-            if re_pwm.match(pdev):
-                ppath = os.path.join(pnode, pdev)
-                pwm = open(ppath, "w")
-                pwm.write("%d" % speed)
-                pwm.close()
+            try:
+                if re_pwm.match(pdev):
+                    ppath = os.path.join(pnode, pdev)
+                    pwm = open(ppath, "w")
+                    pwm.write("%d" % speed)
+                    pwm.close()
+                    pass
                 pass
-            if re_pwm_enable.match(pdev):
-                ppath = os.path.join(pnode, pdev)
-                pwm = open(ppath, "w")
-                pwm.write("1")
-                pwm.close()
+            except:
+                pass
+            try:
+                if re_pwm_enable.match(pdev):
+                    ppath = os.path.join(pnode, pdev)
+                    pwm = open(ppath, "w")
+                    pwm.write("1")
+                    pwm.close()
+                    pass
+                pass
+            except:
                 pass
             pass
         pass
@@ -1367,25 +1468,44 @@ if __name__ == "__main__":
     set_pwm(144)
 
     # Make sure dialog works
-    if dlg:
-        try:
-            dlg.gauge_start("Thank you for triaging. Please fill the form.", title="World Computer Exchange")
-            time.sleep(1)
-            dlg.gauge_update(1, "Thank you for triaging. Please fill the form.", update_text=1)
-            time.sleep(1)
-            dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
-            time.sleep(1)
-            dlg.gauge_stop()
-        except:
-            dlg = None
+    # This also is a way to wait for the network to come up
+
+    has_network = None
+    if is_network_connected():
+        if dlg:
+            try:
+                dlg.gauge_start("Thank you for triaging. Please fill the form.", title="Checking network")
+                for i in range(0, 19):
+                    dlg.gauge_update(1+i*5, "Thank you for triaging. Please fill the form.", update_text=1)
+                    time.sleep(1)
+                    has_network = get_router_ip_address() != None
+                    if has_network:
+                        break
+                    pass
+                dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
+                time.sleep(1)
+                dlg.gauge_stop()
+            except:
+                dlg = None
+                pass
+            pass
+        if not dlg:
+            sys.stdout.write( "\nThank you for triaging. Please fill the form.\nChecking network" )
+            sys.stdout.flush()
+            for i in range(0, 20):
+                sys.stdout.write( "." )
+                sys.stdout.flush()
+                time.sleep(1)
+                has_network = get_router_ip_address() != None
+                if has_network:
+                    break
+                pass
+            sys.stdout.write( "\n\n" )
+            sys.stdout.flush()
             pass
         pass
             
-
-    # time.sleep(3)
     triage_result = True
-
-    has_network = get_router_ip_address() != None
 
     while True:
         # I do this extra work so that I can have a temp file.
@@ -1395,15 +1515,19 @@ if __name__ == "__main__":
         result_displayed = False
 
         if dlg:
+            btitle = "Triage Output"
+            if not triage_result:
+                btitle = "Triage Output - Failed"
+                pass
             try:
                 if (not has_network) or (not triage_result):
-                    dlg.textbox("/tmp/triage.txt", width=76, cr_wrap=1, backtitle="Triage Output")
+                    dlg.textbox("/tmp/triage.txt", width=76, height=19, cr_wrap=1, backtitle=btitle)
                     pass
                 else:
                     triage_output = open("/tmp/triage.txt")
                     report = triage_output.read()
                     triage_output.close()
-                    dlg.infobox(report, width=76, cr_wrap=1, backtitle="Triage Output")
+                    dlg.infobox(report, width=76, height=19, cr_wrap=1, backtitle=btitle)
                     time.sleep(10)
                     pass
                 result_displayed = True
@@ -1420,6 +1544,8 @@ if __name__ == "__main__":
             sys.stdout.flush()
             pass
 
+        # Just in case. One more time would not hurt
+        has_network = get_router_ip_address() != None
         # If no network, just wait for the machine to reboot.
         if (not has_network) or (not triage_result):
             print ""

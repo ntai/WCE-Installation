@@ -4,7 +4,7 @@
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
 #ISOTARGET := wce-clonezilla-v0.45-2011-10.iso
-ISOTARGET := wce-clonezilla-v0.46-lite.iso
+ISOTARGET := wce-clonezilla-v0.47-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 
@@ -71,6 +71,9 @@ fsimage/opt/drbl/conf/drbl.conf: wce/drbl.conf
 	sudo cp $< $@
 
 fsimage/etc/apt/sources.list: wce/sources.list
+	sudo cp $< $@
+
+fsimage/etc/network/interfaces: wce/interfaces
 	sudo cp $< $@
 
 
