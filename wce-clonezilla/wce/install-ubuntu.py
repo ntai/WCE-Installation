@@ -169,16 +169,22 @@ class disk:
 
 
     def partition_disk(self, memsize):
-        parted = subprocess.Popen("parted -s -m %s unit s print" % (self.device_name), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = parted.communicate()
-        lines = out.split("\n")
-        disk_line = lines[1]
-        columns = disk_line.split(":")
-        if columns[0] != self.device_name:
-            print "parted format changed!? Talk to Tai"
-            sys.exit(1)
+        if not self.sectors:
+            parted = subprocess.Popen("parted -s -m %s unit s print" % (self.device_name), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            (out, err) = parted.communicate()
+            lines = out.split("\n")
+            disk_line = lines[1]
+            columns = disk_line.split(":")
+            if columns[0] != self.device_name:
+                print "parted format changed!? Talk to Tai"
+                sys.exit(1)
+                pass
+            sectors = string.atoi(columns[1][:-1])
+            self.sectors = sectors
             pass
-        sectors = string.atoi(columns[1][:-1])
+        else:
+            sectors = self.sectors
+            pass
         print "Disk has %d sectors" % sectors
 
         # Everything is multiple of 8, so that 4k sector problem never happens
@@ -711,6 +717,7 @@ def get_disks(list_mounted_disks):
                     current_disk.device_name = disk_name
                     current_disk.mounted = mounted_devices.has_key(current_disk.device_name)
                     current_disk.size = string.atoi(m.group(1)) / 1000000
+                    current_disk.sectors = string.atoi(m.group(1)) / 512
                     pass
                 pass
             pass

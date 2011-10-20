@@ -4,7 +4,7 @@
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
 #ISOTARGET := wce-clonezilla-v0.45-2011-10.iso
-ISOTARGET := wce-clonezilla-v0.45-lite.iso
+ISOTARGET := wce-clonezilla-v0.46-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 
@@ -22,7 +22,8 @@ LIVEPATCHES := \
  fsimage/etc/default/console-setup \
  fsimage/opt/drbl/sbin/ocs-live-wce \
  fsimage/opt/drbl/conf/drbl.conf \
- fsimage/etc/apt/sources.list
+ fsimage/etc/apt/sources.list \
+ fsimage/etc/network/interfaces
 
 
 SOURCES := \
