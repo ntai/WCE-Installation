@@ -104,6 +104,19 @@ def detect_video_cards():
 def uuidgen():
     return str(uuid.uuid1())
 
+def get_filename_stem(p):
+    basename = os.path.basename(p)
+    while 1:
+        ext = ""
+        try:
+            basename, ext = os.path.splitext(basename)
+        except:
+            pass
+        if ext == "":
+            break
+        pass
+    return basename
+
 
 def get_router_ip_address():
     netstat = subprocess.Popen("netstat -rn", stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -177,6 +190,7 @@ class disk:
         self.assign_uuid_to_partitions()
         self.mount_disk()
         self.finalize_disk()
+        self.create_wce_tag(self.partclone_image)
         pass
 
 
@@ -321,14 +335,31 @@ class disk:
     def partclone_restore_disk(self, partclone_image_file):
         print "restoring disk image"
 
-        if partclone_image_file[0:7] == 'http://':
-            retcode = subprocess.call("wget -q -O - '%s' | gunzip | partclone.ext4 -r -s - -o %s1" % (partclone_image_file, self.device_name), shell=True)
+
+        ext = ""
+        try:
+            ext = os.path.splitext(partclone_image_file)[1]
+        except:
+            pass
+        if ext == ".7z":
+            decomp = "7z e -so"
+        elif ext == ".gz":
+            decomp = "gunzip -c"
+        elif ext == ".xz":
+            decomp = "unxz -c"
         else:
-            retcode = subprocess.call("gunzip -c '%s' | partclone.ext4 -r -s - -o %s1" % (partclone_image_file, self.device_name), shell=True)
+            decomp = "gunzip -c"
+            pass
+
+        if partclone_image_file[0:7] == 'http://':
+            retcode = subprocess.call("wget -q -O - '%s' | %s | partclone.ext4 -r -s - -o %s1" % (partclone_image_file, decomp, self.device_name), shell=True)
+        else:
+            retcode = subprocess.call("%s '%s' | partclone.ext4 -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True)
             pass
 
         if retcode != 0:
             print "\nrestore failed\n"
+            sys.exit(1)
             pass
 
         # Enalrge the ext4 partition. First get partition size
@@ -377,6 +408,7 @@ class disk:
 
         ip = subprocess.Popen(["ip", "addr", "show", "scope", "link"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out, err) = ip.communicate()
+        mac_addr = ""
         try:
             mac_addr = re.findall("link/ether\s+(..):(..):(..):(..):(..):(..)", out)[0]
             newhostname = "wce%s%s%s" % (mac_addr[3], mac_addr[4], mac_addr[5])
@@ -435,8 +467,17 @@ class disk:
             pass
 
         chroot_and_exec(to_do)
-
         pass
+
+
+    def create_wce_tag(self, image_file_name):
+        # Set up the /etc/wce-release file
+        release = open("/mnt/disk2/etc/wce-release", "a+")
+        print >> release, "wce-contents: %s" % get_filename_stem(image_file_name)
+        print >> release, "installation-uuid: %s" % uuidgen()
+        pass
+
+
     pass
 
 

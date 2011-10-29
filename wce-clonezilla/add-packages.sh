@@ -9,7 +9,7 @@ mount -t sysfs none /sys
 mount -t devpts none /dev/pts
 # Things to do
 apt-get update
-apt-get install -y emacs22-nox lm-sensors fancontrol wireless-tools python-dialog
+apt-get install -y lm-sensors fancontrol wireless-tools python-dialog xz-utils emacs22-nox
 apt-get clean
 #
 umount /proc || umount -lf /proc

@@ -14,13 +14,12 @@ deb http://us.archive.ubuntu.com/ubuntu/ maverick-backports main restricted univ
 deb-src http://us.archive.ubuntu.com/ubuntu/ maverick-backports main restricted universe multiverse
 deb http://archive.canonical.com/ubuntu maverick partner
 deb-src http://archive.canonical.com/ubuntu maverick partner
-deb http://extras.ubuntu.com/ubuntu maverick main
-deb-src http://extras.ubuntu.com/ubuntu maverick main
 deb http://security.ubuntu.com/ubuntu maverick-security main restricted
 deb-src http://security.ubuntu.com/ubuntu maverick-security main restricted
 deb http://security.ubuntu.com/ubuntu maverick-security universe
 deb-src http://security.ubuntu.com/ubuntu maverick-security universe
 deb http://security.ubuntu.com/ubuntu maverick-security multiverse
 deb-src http://security.ubuntu.com/ubuntu maverick-security multiverse
-deb http://download.virtualbox.org/virtualbox/debian maverick contrib non-free
 deb http://drbl.sourceforge.net/drbl-core drbl stable
+#deb http://extras.ubuntu.com/ubuntu maverick main
+#deb-src http://extras.ubuntu.com/ubuntu maverick main

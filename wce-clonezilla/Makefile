@@ -4,7 +4,7 @@
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
 #ISOTARGET := wce-clonezilla-v0.45-2011-10.iso
-ISOTARGET := wce-clonezilla-v0.47-lite.iso
+ISOTARGET := wce-clonezilla-v0.48-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 
@@ -44,7 +44,7 @@ extract-cd: $(CLONEZILLA_LIVE)
 	sudo umount clonezilla_live
 	sudo rmdir clonezilla_live
 
-fsimage: extract-cd
+fsimage: extract-cd add-packages.sh wce/sources.list
 	-mkdir fsimage
 	-mkdir fsimage-temp
 	sudo mount -o loop extract-cd/live/filesystem.squashfs fsimage-temp
