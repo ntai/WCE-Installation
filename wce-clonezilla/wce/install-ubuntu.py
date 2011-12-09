@@ -1142,12 +1142,12 @@ def detect_sound_device():
     return detected
 
 
-def try_hook():
+def try_hook(hook_name):
     urls = []
     router_ip_address = get_router_ip_address()
     if router_ip_address:
-        urls.append("http://%s/hook.py" % router_ip_address)
-        urls.append("http://%s/hook.sh" % router_ip_address)
+        urls.append("http://%s/%s.py" % (router_ip_address, hook_name))
+        urls.append("http://%s/%s.sh" % (router_ip_address, hook_name))
         pass
 
     for url in urls:
@@ -1700,8 +1700,7 @@ if __name__ == "__main__":
         n = n - step
         pass
 
-    try_hook()
-
+    try_hook("pre-installation")
     try:
         main()
         print ""
@@ -1709,6 +1708,7 @@ if __name__ == "__main__":
         print "Installation complete."
         print "**********************"
         print ""
+        try_hook("post-installation")
         reboot()
         pass
     except (KeyboardInterrupt, SystemExit), e:
