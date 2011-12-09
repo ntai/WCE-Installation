@@ -645,6 +645,76 @@ def get_ram_info():
         pass
     return rams
 
+# Get ram type
+re_memory_type = re.compile(r'\sType: (\w+)')
+re_memory_device = re.compile(r'Memory Device')
+re_physical_memory = re.compile(r'Physical Memory Array')
+
+def get_ram_type():
+    memory_type = None
+    dmidecode = subprocess.Popen('dmidecode -t 17', shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    (out, err) = dmidecode.communicate()
+    out = out + '\n'
+    parse_state = 0
+    for line in out.split('\n'):
+        if parse_state == 0:
+            m = re_smbios_present.match(line)
+            if m:
+                parse_state = 1
+                pass
+            pass
+        elif parse_state == 1:
+            m = re_memory_device.match(line)
+            if m:
+                parse_state = 2
+                pass
+            pass
+        elif parse_state == 2:
+            if len(line.strip()) == 0:
+                parse_state = 1
+                continue
+
+            m = re_memory_type.match(line)
+            if m:
+                memory_type = m.group(1)
+                pass
+            pass
+        pass
+
+    if memory_type:
+        return memory_type
+
+    dmidecode = subprocess.Popen('dmidecode -t 16', shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    (out, err) = dmidecode.communicate()
+    out = out + '\n'
+    parse_state = 0
+    for line in out.split('\n'):
+        if parse_state == 0:
+            m = re_smbios_present.match(line)
+            if m:
+                parse_state = 1
+                pass
+            pass
+        elif parse_state == 1:
+            m = re_physical_memory.match(line)
+            if m:
+                parse_state = 2
+                pass
+            pass
+        elif parse_state == 2:
+            if len(line.strip()) == 0:
+                parse_state = 1
+                continue
+
+            m = re_memory_type.match(line)
+            if m:
+                memory_type = m.group(1)
+                pass
+            pass
+        pass
+
+    return memory_type
+
 
 # returns size in MB
 def parse_parted_size(size_string):
@@ -1299,6 +1369,7 @@ def triage(output):
     global mounted_devices
     cpu_class, cpu_cores, n_processors, cpu_vendor, model_name, bogomips, cpu_speed = detect_cpu_type()
     # Try getting memory from dmidecode
+    ram_type = get_ram_type()
     rams = get_ram_info()
     total_memory = 0
     for ram in rams:
@@ -1317,12 +1388,18 @@ def triage(output):
     subprocess.call("clear", shell=True)
     print >> output, "CPU Level: P%d - %dMhz" % (cpu_class, cpu_speed)
     print >> output, "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
+
+    if ram_type == None:
+        ram_type = "Unknown"
+        pass
+
     if total_memory < 200:
-        print >> output, "RAM Size: %dMbytes -- INSTALL MORE MEMORY" % (total_memory)
+        print >> output, "RAM Type: %s  Size: %dMbytes -- INSTALL MORE MEMORY" % (ram_type, total_memory)
         triage_result = False
     else:
-        print >> output, "RAM Size: %dMbytes" % (total_memory)
+        print >> output, "RAM Type: %s  Size: %dMbytes" % (ram_type, total_memory)
         pass
+
     if len(rams) > 0:
         slots = "    "
         for ram in rams:
