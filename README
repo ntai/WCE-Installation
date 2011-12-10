@@ -7,3 +7,9 @@ subdirectory:
 
 wce-clonezilla
  creates the installer.
+
+installer-maker
+ makes bootable USB storage for WCE installation.
+
+follow-up
+ prepares/installs the WCE phone-home script

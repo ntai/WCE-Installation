@@ -1,0 +1,61 @@
+#!/usr/bin/python
+#
+# The script sets up the world computer exchange's installation follow up
+#
+
+import os, sys, subprocess, string
+
+cron_template = """%d * * * *	daemon	[ -x /usr/local/bin/access-world-computer-exchange ] && /usr/local/bin/access-world-computer-exchange > /dev/null
+"""
+
+if __name__ == "__main__":
+   # Directory to store the 
+   dir = "/var/lib/world-computer-exchange"
+
+   if not os.path.isdir(dir):
+      try:
+         os.mkdir(dir)
+      except:
+         sys.exit(0)
+         pass
+      pass
+
+   try:
+      os.chmod(dir, 0777)
+   except:
+      pass
+
+   # Set up the Computer UUID file as a random unique ID
+   uuid_file = os.path.join(dir, "computer-uuid")
+
+   if not os.path.isfile(uuid_file):
+      subprocess.call("uuidgen > " + uuid_file, shell=True)
+      pass
+
+
+   # URL for access
+   access_url_file = os.path.join(dir, "access-url")
+
+   if not os.path.isfile(access_url_file):
+      f = open(access_url_file, "w")
+      f.write('http://wce.footprintllc.com/About/Ping/PingBO1.aspx')
+      f.close()
+      pass
+ 
+   # Cron time, based on the computer UUID which is random
+   wce_cron_file = "/etc/cron.d/world-computer-exchange"
+   if not os.path.isfile(wce_cron_file):
+      f = open(uuid_file)
+      uuid = f.read()
+      f.close()
+      value = string.atoi(uuid[0:8], 16)
+      minute_of_week = value % (60 * 24 * 7)
+      minute = minute_of_week % 60
+
+      f = open(wce_cron_file, "w")
+      cron_contents = cron_template % (minute)
+      f.write(cron_contents)
+      f.close()
+      pass
+   pass
+

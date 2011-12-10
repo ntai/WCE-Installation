@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+# -*- Mode: Python -*-
+#
+# The script is intended to wake up every hour
+#
+
+import os, sys, urllib, time, datetime, hashlib, subprocess, getopt
+
+class access_time:
+    def __init__(self):
+        self.last_timestamp = None
+        # This is the default time format
+        self.timestamp_format = '%Y-%m-%d %H:%M:%S.%f'
+        self.timestamp_file = '/var/lib/world-computer-exchange/access-timestamp'
+        self.new_timestamp = datetime.datetime.utcnow()
+        pass
+
+
+    def get_existing_timestamp(self):
+        try:
+            timestamp_file = open(self.timestamp_file)
+            timestamp_str = timestamp_file.read().strip()
+            timestamp_file.close()
+            self.last_timestamp = datetime.datetime.strptime(timestamp_str, self.timestamp_format)
+        except:
+            self.last_timestamp = None
+            pass
+
+
+    def is_due(self, seconds):
+        if self.last_timestamp:
+            t_delta = self.new_timestamp - self.last_timestamp
+            total_seconds = t_delta.days * 24.0 * 60.0 + t_delta.seconds
+            return total_seconds > seconds
+        return True
+
+
+    def save_new_timestamp(self):
+        try:
+            timestamp_file = open(self.timestamp_file, 'w')
+            timestamp_file.write(self.new_timestamp.strftime('%Y-%m-%d %H:%M:%S.%f'))
+            timestamp_file.close()
+        except:
+            pass
+        pass
+
+    pass
+
+
+def get_contents(filename):
+    contents = ""
+    try:
+        f = open(filename)
+        contents = f.read()
+        f.close()
+    except:
+        pass
+    return contents
+
+
+if __name__ == "__main__":
+    verbose = None
+
+    computer_uuid = get_contents('/var/lib/world-computer-exchange/computer-uuid').strip()
+    access_url = get_contents('/var/lib/world-computer-exchange/access-url').strip()
+    
+    # If there is no computer uuid, forget about it
+    # Computer UUID is a random UUID, which is supposed to be created by
+    # wce-follow-up script.
+    if not computer_uuid:
+        sys.exit(0)
+        pass
+
+    #
+    atime = access_time()
+    atime.get_existing_timestamp()
+    if verbose:
+        print "last time stamp = %s" % atime.last_timestamp
+        pass
+                                 
+    # Is the access time due?
+    # The default is every 23 days
+    # You can override the interval in /var/lib/world-computer-exchange/access-interval
+    # However, for the sake of sanity, it would be used if it's larger than 60 = 1min.
+    #
+    secs = 60 * 60 * 24 * 23
+    access_interval = get_contents('/var/lib/world-computer-exchange/access-interval').strip()
+    if len(access_interval) > 0:
+        try:
+            value = string.atoi(access_interval)
+            if value >= 60:
+                secs = value
+                pass
+            pass
+        except:
+            pass
+        pass
+
+    if not atime.is_due(secs):
+        if verbose:
+            print "Postpone"
+            pass
+        sys.exit(0)
+        pass
+
+    # This is how we access the WCE web site.
+    timestamp_str = atime.new_timestamp.strftime('%Y%m%d')
+    wget_command = 'wget -O /dev/null "%s?uuid=%s?timestamp=%s"' % (access_url, computer_uuid, timestamp_str)
+    if verbose:
+        print wget_command
+        pass
+
+    # Run the wget command 
+    wget = subprocess.Popen(wget_command, stdin=None, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    (cout, cerr) = wget.communicate()
+
+    # If wget succeeds, update the timestamp
+    if wget.returncode == 0:
+        if verbose:
+            print "wget succeeded."
+            pass
+        atime.save_new_timestamp()
+        pass
+    elif wget.returncode == None:
+        if verbose:
+            print "wget in progress. Try to kill the process."
+            pass
+        try:
+            wget.kill()
+        except:
+            pass
+        pass
+    else:
+        if verbose:
+            print "wget.returncode = %d" % wget.returncode
+            pass
+        (cout, cerr) = wget.communicate()
+        pass
+    pass
