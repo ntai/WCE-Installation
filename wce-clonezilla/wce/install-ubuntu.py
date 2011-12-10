@@ -442,6 +442,12 @@ class disk:
         # 
         retcode = subprocess.call("rm -f /mnt/disk2/etc/udev/rules.d/70-persistent*", shell=True)
 
+        #
+        # Remove the WCE follow up files
+        # 
+        retcode = subprocess.call("rm -f /mnt/disk2/var/lib/world-computer-exchange/computer-uuid", shell=True)
+        retcode = subprocess.call("rm -f /mnt/disk2/var/lib/world-computer-exchange/access-timestamp", shell=True)
+
         # It needs to do a few things before chroot
         # Try copy the /etc/resolve.conf
         try:
