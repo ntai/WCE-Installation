@@ -15,7 +15,7 @@ echo -n 'http://wce.footprintllc.com/About/Ping/PingBO1.aspx' > /mnt/disk2/var/l
 if [ $disksize_m -ge 34000 ] ; then
   echo "Adding additional contents"
   cd /mnt/disk2/usr/local/share/wce/content_archive_v3_Oct_3_11/EN/Program
-  wget -q -O - http://wcesrv/additional-payload.tar | tar xf -
+  wget --progress=bar -O - http://wcesrv/additional-payload.tar | tar xf -
 fi
 sleep 3
 echo ""

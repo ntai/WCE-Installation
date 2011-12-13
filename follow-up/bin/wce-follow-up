@@ -5,7 +5,7 @@
 
 import os, sys, subprocess, string
 
-cron_template = """%d * * * *	daemon	[ -x /usr/local/bin/access-world-computer-exchange ] && /usr/local/bin/access-world-computer-exchange > /dev/null
+cron_template = """%d * * * *	root	[ -x /usr/local/bin/access-world-computer-exchange ] && /usr/local/bin/access-world-computer-exchange > /dev/null
 """
 
 if __name__ == "__main__":
@@ -21,7 +21,7 @@ if __name__ == "__main__":
       pass
 
    try:
-      os.chmod(dir, 0777)
+      os.chmod(dir, 0755)
    except:
       pass
 
