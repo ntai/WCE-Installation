@@ -10,7 +10,7 @@ except:
     sys.exit(1)
     pass
 
-disk1_re = re.compile(r"Disk /dev/[^:]+:\s+\d+\.\d*\s+[KMG]B, (\d+) bytes")
+disk1_re = re.compile(r"Disk /dev/[^:]+:\s+\d+\.{0,1}\d*\s+[KMG]B, (\d+) bytes")
 disk2_re = re.compile(r"\d+ heads, \d+ sectors/track, \d+ cylinders, total (\d+) sectors")
 disk3_re = re.compile(r"Units = sectors of \d+ * \d+ = (\d+) bytes")
 part_re = re.compile(r"([^\s]+)\s+\*{0,1}\s+\d+\s+\d+\s+\d+\s+([\dA-Fa-f]+)\s+")
@@ -336,6 +336,9 @@ class disk:
 
         part1_sectors = (750 * 1024 * 1024) / 512
         part1_start = 2048
+        if part1_sectors + part1_start > (sectors / 2):
+            part1_sectors = (sectors / 2) - part1_start
+            pass
         part1_end = part1_start + part1_sectors - 1
         part2_start = part1_start + part1_sectors
         part2_end = sectors - 1 
@@ -449,6 +452,8 @@ def get_usb_disks():
             for line in out.split("\n"):
                 try:
                     elems = line.split('=')
+                    if len(elems) != 2:
+                        continue
                     tag = string.strip(elems[0])
                     value = string.strip(elems[1])
                     if tag == "ID_BUS":
@@ -457,6 +462,7 @@ def get_usb_disks():
                             pass
                         elif value.lower() == "usb":
                             is_usb = True
+                            print "USB"
                             pass
                         pass
                     elif tag == "ID_TYPE":
@@ -468,7 +474,7 @@ def get_usb_disks():
                         disk_model = value
                         pass
                     elif tag == "ID_VENDOR":
-                        disk_vendor = vendor
+                        disk_vendor = value
                         pass
                     elif tag == "ID_SERIAL":
                         disk_serial = value
@@ -476,11 +482,13 @@ def get_usb_disks():
                     pass
                 except Exception, e:
                     traceback.print_tb(None)
+                    raise e
                     pass
                 pass
             pass
         except Exception, e:
             traceback.print_tb(None)
+            raise e
             pass
 
         if not is_disk:
@@ -507,7 +515,7 @@ def get_usb_disks():
                     pass
                 pass
             else:
-                if line == "":
+                if line == "" and current_disk:
                     looking_for_partition = True
                     continue
                 m = disk1_re.match(line)
@@ -531,27 +539,32 @@ def get_usb_disks():
                 usb_disks.append(current_disk)
                 pass
             pass
-        else:
-            print "Did not find the disk %s" % disk_name
-            pass
         pass
 
     return usb_disks
 
 
-def main(iso_file):
+def main(fresh, mbr, iso_file):
     global dlg
 
     usb_disks = get_usb_disks()
     if len(usb_disks) == 0:
-        dlg.msgbox("Did not find any USB disks.")
+        print "Did not find any USB disks."
+        # dlg.msgbox("Did not find any USB disks.")
         return
     
     menu = []
     for disk in usb_disks:
         menu.append((disk.device_name, "%s %dMB" % (disk.model_name, disk.get_size()/1000000), 0))
         pass
-    (code, tag) = dlg.checklist(text="Existing contents will be destroyed!",
+
+    if fresh:
+        prompt = "Existing contents will be destroyed!"
+    else:
+        prompt = "Updating payload"
+        pass
+
+    (code, tag) = dlg.checklist(text=prompt,
                                 height=15, width=70, list_height=8, 
                                 choices = menu, title="USB Disk Maker", 
                                 backtitle="World Computer Exchange")
@@ -569,27 +582,42 @@ def main(iso_file):
         #
         disk.unmount()
         #
-        parted = disk.start_parted()
-        (out, err) = parted.communicate()
-        if len(err) > 0:
-            dlg.msgbox("parted error\n" + err)
-            continue
+        if fresh:
+            parted = disk.start_parted()
+            (out, err) = parted.communicate()
+            if len(err) > 0:
+                dlg.msgbox("parted error\n" + err)
+                continue
+            disk.refresh_partition()
+            disk.unmount()
+            pass
 
-        disk.refresh_partition()
-        disk.unmount()
         boot_part = None
         ext2_part = None
         for part in disk.partitions:
-            dlg.infobox( "Formatting %s" % part.device_name)
+            if fresh:
+                dlg.infobox( "Formatting %s" % part.device_name)
+                pass
             if part.partition_type == 'c':
                 boot_part = part
-                part.mkfs("ubuntu")
+                if fresh:
+                    part.mkfs("ubuntu")
+                else:
+                    part.partition_name = "ubuntu"
+                    pass
             elif part.partition_type == '83':
                 ext2_part = part
-                part.mkfs("casper-rw")
+                if fresh:
+                    part.mkfs("casper-rw")
+                else:
+                    part.partition_name = "casper-rw"
+                    pass
                 pass
             pass
-        dlg.infobox( "Formatting complete")
+
+        if fresh:
+            dlg.infobox( "Formatting complete")
+            pass
 
         disk.mount()
         dlg.infobox( "Figuring out copying")
@@ -601,11 +629,13 @@ def main(iso_file):
         dlg.infobox( "Finished copying")
         disk.unmount()
 
-        dlg.infobox( "Installing bootloader to %s" % boot_part.device_name)
-        boot_part.install_bootloader()
+        if mbr:
+            dlg.infobox( "Installing bootloader to %s" % boot_part.device_name)
+            boot_part.install_bootloader()
 
-        dlg.infobox( "Installing MBR to %s" % disk.device_name)
-        disk.install_mbr()
+            dlg.infobox( "Installing MBR to %s" % disk.device_name)
+            disk.install_mbr()
+            pass
         pass
 
     dlg.infobox( "Unmounting ISO")
@@ -626,8 +656,19 @@ if __name__ == "__main__":
         sys.exit(1)
         pass
 
-    if len(sys.argv) > 1:
-        iso_file = sys.argv[1]
+    fresh = True
+    mbr = True
+    argv = sys.argv[1:]
+    if len(argv) > 0:
+        if argv[0] == "-update":
+            fresh = False
+            mbr = False
+            argv = argv[1:]
+            pass
+        pass
+
+    if len(argv) > 0:
+        iso_file = argv[0]
         pass
     else:
         (code, iso_file) = dlg.fselect(os.getcwd(), 20, 76)
@@ -642,5 +683,5 @@ if __name__ == "__main__":
         sys.exit(0)
         pass
 
-    main(iso_file)
+    main(fresh, mbr, iso_file)
     pass
