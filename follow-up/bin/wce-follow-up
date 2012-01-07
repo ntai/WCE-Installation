@@ -40,7 +40,7 @@ if __name__ == "__main__":
 
    if not os.path.isfile(access_url_file):
       f = open(access_url_file, "w")
-      f.write('http://wce.footprintllc.com/About/Ping/PingBO1.aspx')
+      f.write('http://wce.footprintllc.com/portals/0/PingBO1.html')
       f.close()
       pass
  

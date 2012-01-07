@@ -10,7 +10,7 @@ mkdir -p /mnt/disk2/var/lib/world-computer-exchange/
 rm -f /mnt/disk2/var/lib/world-computer-exchange/access-timestamp /mnt/disk2/var/lib/world-computer-exchange/computer-uuid
 
 # 
-echo -n 'http://wce.footprintllc.com/About/Ping/PingBO1.aspx' > /mnt/disk2/var/lib/world-computer-exchange/access-url
+echo -n 'http://wce.footprintllc.com/portals/0/PingBO1.html' > /mnt/disk2/var/lib/world-computer-exchange/access-url
 
 if [ $disksize_m -ge 34000 ] ; then
   echo "Adding additional contents"
