@@ -1,0 +1,67 @@
+WCE Follow Up
+
+The goal of this is to access a URL periodically from the computers
+WCE installs.
+It is simple that we have a python script that runs periodically.
+To run periodically, we use cron.
+
+
+How it works:
+
+There are 4 files to install. 
+
+/etc/rc.local
+/usr/local/bin/wce-follow-up
+/usr/local/bin/access-world-computer-exchange
+/var/lib/world-computer-exchange/access-url
+
+"/etc/rc.local" runs /usr/local/bin/wce-follow-up at machine
+start up, and it does install crontab. It also sets up the
+necessary directories, etc. for the periodic web access.
+
+"/usr/local/bin/access-world-computer-exchange" is the python
+script that accesses the WCE web site.
+This is run by cron.
+
+"/var/lib/world-computer-exchange/access-url" is the URL to
+access.
+
+access-world-computer-exchange uses two more files.
+/var/lib/world-computer-exchange/computer-uuid
+/var/lib/world-computer-exchange/access-timestamp
+
+computer-uuid: This is the UUID of computer, and generated
+using "uuidgen" command by "wce-follow-up" at start up if
+it's not present. The UUID is random, so essentially each
+computer get a complete random ID.
+
+access-timestamp: This is the last successful PING access.
+
+Once access-world-computer-exchange succeeds the PING,
+it waits at least 23 days. (more than 3 weeks and less than
+4 weeks, enough for once a month.)
+
+
+How to install this:
+
+A way to install these files is to create a tar file,
+and (cd / ; tar xf wce-follow-up.tar) to put the all files.
+
+Makefile included can produce the tar file with necessary
+permissions, etc. so all you have to do is to untar at the
+installation.
+
+Alternatively, you can make the disk image with these files
+already installed.
+When you this, make sure to remove two files.
+
+rm -f "/var/lib/world-computer-exchange/access-timestamp"
+rm -f "/var/lib/world-computer-exchange/computer-uuid"
+
+
+
+At the end:
+
+Make sure your disk image to include uuidgen and wget package.
+Both should be present if you do a Edubuntu installation, but
+doesn't hurt to double-check when you create the disk image.
