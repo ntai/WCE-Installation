@@ -16,6 +16,11 @@ UUID=%s /               ext4    errors=remount-ro 0       1
 UUID=%s none            swap    sw              0       0
 '''
 
+#
+# SIS 191 gigabit controller 1039:0191 does not work.
+# 
+ethernet_card_blacklist = { "1039" : { "0191" : True } }
+
 
 nvidia_xorg_conf = '''
 Section "ServerLayout"
@@ -60,7 +65,7 @@ Section "Screen"
 EndSection
 '''
 
-pci_re = re.compile(r'\s*[0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f]\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"')
+lspci_nm_re = re.compile(r'\s*([0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f])\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"')
 
 disk_images = []
 
@@ -72,17 +77,37 @@ class mkfs_failed(Exception):
 
 
 
+lspci_output = None
+
+def get_lspci_nm_output():
+    global lspci_output
+    if not lspci_output:
+        lspci = subprocess.Popen("lspci -nm", shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        (lspci_output, err) = lspci.communicate()
+        pass
+    return lspci_output
+
+
+def get_lspci_device_desc(pci_id):
+    lspci = subprocess.Popen("lspci -mm -s %s" % pci_id, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    (out, err) = lspci.communicate()
+    lspci_mm_s_re = re.compile(r'\s*([0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f])\s+"([^"]*)"\s+"([^"]*)"\s+"([^"]*)"\s+([^\s]+)\s+"([^"]*)"\s+"([^"]*)"\s*')
+    m = lspci_mm_s_re.match(out.strip())
+    if m:
+        return m.group(3) + " " + m.group(4)
+    return ""
+
+
 def detect_video_cards():
     n_nvidia = 0
     n_ati = 0
     n_vga = 0
-    lspci = subprocess.Popen("lspci -nm", shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-    (out, err) = lspci.communicate()
+    out = get_lspci_nm_output()
     for line in out.split('\n'):
-        m = pci_re.match(line)
+        m = lspci_nm_re.match(line)
         if m:
-            if m.group(1) == '0300':
-                vendor_id = m.group(2).lower()
+            if m.group(2) == '0300':
+                vendor_id = m.group(3).lower()
                     # Display controller
                 if vendor_id == '10de':
                     # nVidia
@@ -1120,6 +1145,27 @@ def choose_disk_image(prompt, images):
 
 
 def detect_ethernet():
+    out = get_lspci_nm_output()
+
+    blacklisted_cards = []
+    for line in out.split('\n'):
+        m = lspci_nm_re.match(line)
+        if m:
+            m.group(2) == '0200':
+                vendor_id = m.group(3).lower()
+                device_id = m.group(4).lower()
+                
+                try:
+                    if ethernet_card_blacklist[vendor_id][device_id]:
+                        blacklisted_cards.append(get_lspci_device_desc(m.group(1)))
+                        pass
+                    pass
+                except KeyError:
+                    pass
+                pass
+            pass
+        pass
+
     ethernet_detected = False
     ip = subprocess.Popen(["ip", "addr", "show", "scope", "link"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     (out, err) = ip.communicate()
@@ -1130,8 +1176,7 @@ def detect_ethernet():
             pass
     except:
         pass
-    return ethernet_detected
-
+    return (ethernet_detected, blacklisted_cards)
 
 
 def detect_sound_device():
@@ -1184,7 +1229,8 @@ def try_hook(hook_name):
 
 def main():
     global mounted_devices, disk_images
-    if not detect_ethernet():
+    (active_ethernet, bad_cards) = detect_ethernet()
+    if not active_ethernet:
         print """
 ************************************************************
 *        Ethernet Interface is not detected.               *
@@ -1348,7 +1394,7 @@ def detect_cpu_type():
         pass
 
     cpu_class = 1
-    if cpu_64:
+    if cpu_cores >= 2
         cpu_class = 5
     elif cpu_sse2 or (cpu_3dnow and cpu_sse):
         cpu_class = 4
@@ -1387,11 +1433,12 @@ def triage(output):
         pass
     disks = get_disks(True)
     n_nvidia, n_ati, n_vga = detect_video_cards()
+    (ethernet_detected, bad_ethernet_cards) = detect_ethernet()
     sound_dev = detect_sound_device()
-    ethernet_detected = detect_ethernet()
     triage_result = True
     
     subprocess.call("clear", shell=True)
+    print >> output, ""
     print >> output, "CPU Level: P%d - %dMhz" % (cpu_class, cpu_speed)
     print >> output, "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
 
@@ -1466,6 +1513,13 @@ def triage(output):
         print >> output, "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
         triage_result = False
         pass
+    if len(bad_ethernet_cards) > 0:
+        print >> output, "Remove or disable followings cards because known to not work"
+        for card in bad_ethernet_cards:
+            print >> output, "    " + bad_ethernet_cards
+            pass
+        pass
+
     if sound_dev:
         print >> output, "Sound card: detected"
     else:
