@@ -1151,7 +1151,7 @@ def detect_ethernet():
     for line in out.split('\n'):
         m = lspci_nm_re.match(line)
         if m:
-            m.group(2) == '0200':
+            if m.group(2) == '0200':
                 vendor_id = m.group(3).lower()
                 device_id = m.group(4).lower()
                 
