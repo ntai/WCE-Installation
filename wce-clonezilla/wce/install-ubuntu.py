@@ -1394,7 +1394,7 @@ def detect_cpu_type():
         pass
 
     cpu_class = 1
-    if cpu_cores >= 2
+    if cpu_cores >= 2:
         cpu_class = 5
     elif cpu_sse2 or (cpu_3dnow and cpu_sse):
         cpu_class = 4
@@ -1516,7 +1516,7 @@ def triage(output):
     if len(bad_ethernet_cards) > 0:
         print >> output, "Remove or disable followings cards because known to not work"
         for card in bad_ethernet_cards:
-            print >> output, "    " + bad_ethernet_cards
+            print >> output, "    " + card
             pass
         pass
 
