@@ -4,7 +4,7 @@
 # The script is intended to wake up every hour
 #
 
-import os, sys, urllib, time, datetime, hashlib, subprocess, getopt
+import os, sys, urllib, time, datetime, hashlib, subprocess, getopt, string
 
 class access_time:
     def __init__(self):
