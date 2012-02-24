@@ -22,7 +22,8 @@ LIVEPATCHES := \
  fsimage/opt/drbl/sbin/ocs-live-wce \
  fsimage/opt/drbl/conf/drbl.conf \
  fsimage/etc/apt/sources.list \
- fsimage/etc/network/interfaces
+ fsimage/etc/network/interfaces \
+ fsimage/etc/resolv.conf 
 
 
 SOURCES := \
@@ -32,8 +33,11 @@ SOURCES := \
  extract-cd/isolinux/wcebg2.png \
  ${DISKIMAGES}
 
+SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
+
 $(CLONEZILLA_LIVE) :
-	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/clonezilla-live-20110113-maverick.iso -O $@
+	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/20110113-maverick/clonezilla-live-20110113-maverick.iso -O $@
+
 
 extract-cd: $(CLONEZILLA_LIVE)
 	-sudo mkdir clonezilla_live
@@ -51,6 +55,7 @@ fsimage: extract-cd add-packages.sh wce/sources.list
 	sudo umount fsimage-temp
 	rmdir fsimage-temp
 	sudo make fsimage/etc/apt/sources.list
+	sudo make fsimage/etc/resolv.conf
 	sudo ./add-packages.sh
 
 
@@ -75,6 +80,8 @@ fsimage/etc/apt/sources.list: wce/sources.list
 fsimage/etc/network/interfaces: wce/interfaces
 	sudo cp $< $@
 
+fsimage/etc/resolv.conf: /etc/resolv.conf
+	sudo cp -p $< $@
 
 extract-cd/isolinux/wcebg1.png: wce/wcebg1.png
 	sudo cp $< $@
@@ -86,7 +93,12 @@ extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg
 	sudo cp $< $@
 
 
-extract-cd/live/filesystem.squashfs: $(LIVEPATCHES)
+squashfs-installed:
+	[ "$(SQUASHFS_TOOLS)" != "" ] || sudo apt-get install -y squashfs-tools
+	touch squashfs-installed
+
+
+extract-cd/live/filesystem.squashfs: squashfs-installed $(LIVEPATCHES)
 	sudo chmod +w extract-cd/live/filesystem.packages
 	sudo chroot fsimage dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
 	sudo cp wce/filesystem.packages extract-cd/live/filesystem.packages
@@ -122,5 +134,6 @@ tftp: /var/lib/tftpboot/wce/live/filesystem.size \
 clean:
 	sudo rm -fR extract-cd fsimage fsimage-temp clonezilla_live
 	rm -f wce/filesystem.packages wce/filesystem.size
+	rm -f squashfs-installed
 
 
