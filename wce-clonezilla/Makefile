@@ -3,7 +3,7 @@
 #
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
-ISOTARGET := wce-clonezilla-v0.51-lite.iso
+ISOTARGET := wce-clonezilla-v0.52-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 

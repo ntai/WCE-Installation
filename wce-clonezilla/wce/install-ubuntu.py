@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select
+import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse
 
 fstab_template = '''# /etc/fstab: static file system information.
 #
@@ -75,6 +75,14 @@ disk_images = []
 class mkfs_failed(Exception):
     pass
 
+
+def get_transport_scheme(u):
+    transport_scheme = None
+    try:
+        transport_scheme = urlparse.urlsplit(u).scheme
+    except:
+        pass
+    return transport_scheme
 
 
 lspci_output = None
@@ -376,7 +384,8 @@ class disk:
             decomp = "gunzip -c"
             pass
 
-        if partclone_image_file[0:7] == 'http://':
+        transport_scheme = get_transport_scheme(partclone_image_file)
+        if transport_scheme:
             retcode = subprocess.call("wget -q -O - '%s' | %s | partclone.ext4 -r -s - -o %s1" % (partclone_image_file, decomp, self.device_name), shell=True)
         else:
             retcode = subprocess.call("%s '%s' | partclone.ext4 -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True)
@@ -1077,7 +1086,9 @@ def get_net_disk_images():
     images = []
     urls = []
     urls = urls + ["http://wceinstall/wce-disk-images.txt",
-                   "http://wcesrv/wce-disk-images.txt"]
+                   "ftp://wceinstall/wce-disk-images.txt",
+                   "http://wcesrv/wce-disk-images.txt",
+                   "ftp://wcesrv/wce-disk-images.txt"]
 
     for url in urls:
         try:
@@ -1085,7 +1096,8 @@ def get_net_disk_images():
             (out, err) = wget.communicate()
             if wget.returncode == 0:
                 for line in out.split('\n'):
-                    if (len(line) > 8) and (line[0:7] == 'http://'):
+                    transport_scheme = get_transport_scheme(line)
+                    if transport_scheme:
                         images.append(line)
                         pass
                     pass
@@ -1198,7 +1210,9 @@ def try_hook(hook_name):
     router_ip_address = get_router_ip_address()
     if router_ip_address:
         urls.append("http://%s/%s.py" % (router_ip_address, hook_name))
+        urls.append("ftp://%s/%s.py" % (router_ip_address, hook_name))
         urls.append("http://%s/%s.sh" % (router_ip_address, hook_name))
+        urls.append("ftp://%s/%s.sh" % (router_ip_address, hook_name))
         pass
 
     for url in urls:
