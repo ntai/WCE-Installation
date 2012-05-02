@@ -35,6 +35,8 @@ SOURCES := \
 
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
 
+GENISOIMAGE := $(shell dpkg -l genisoimage 2>/dev/null)
+
 $(CLONEZILLA_LIVE) :
 	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/20110113-maverick/clonezilla-live-20110113-maverick.iso -O $@
 
@@ -110,7 +112,11 @@ extract-cd/live/filesystem.squashfs: squashfs-installed $(LIVEPATCHES)
 	sudo cp wce/filesystem.size extract-cd/live/filesystem.size
 
 
-$(ISOTARGET): $(SOURCES)
+genisoimage-installed:
+	[ "$(GENISOIMAGE)" != "" ] || sudo apt-get install -y genisoimage
+	touch genisoimage-installed
+
+$(ISOTARGET): $(SOURCES) genisoimage-installed
 	cd extract-cd;sudo genisoimage $(UDF_FLAGS) -D -r -V "$$IMAGE_NAME" -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o ../$(ISOTARGET) .
 
 
