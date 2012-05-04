@@ -140,6 +140,7 @@ gpg-key:
 	sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
 tftpboot/pxelinux.0:
+	[ -d tftpboot ] || mkdir tftpboot
 	wget http://archive.ubuntu.com/ubuntu/dists/maverick/main/installer-i386/current/images/netboot/pxelinux.0 -O $@
 
 
