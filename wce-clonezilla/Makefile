@@ -126,13 +126,38 @@ gpg-key:
 
 
 /var/lib/tftpboot/wce/live/% : extract-cd/live/%
+	[ -d /var/lib/tftpboot/wce/live/ ] || sudo mkdir -p /var/lib/tftpboot/wce/live
 	sudo cp -p $< $@
 
-tftp: /var/lib/tftpboot/wce/live/filesystem.size \
+/var/lib/tftpboot/wce/boot/% : tftpboot/wce/boot/%
+	[ -d /var/lib/tftpboot/wce/boot/ ] || sudo mkdir -p /var/lib/tftpboot/wce/boot
+	sudo cp -p $< $@
+
+/var/lib/tftpboot:
+	sudo mkdir -p /var/lib/tftpboot
+
+/var/lib/tftpboot/pxelinux.cfg:
+	sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
+
+tftpboot/pxelinux.0:
+	wget http://archive.ubuntu.com/ubuntu/dists/maverick/main/installer-i386/current/images/netboot/pxelinux.0 -O $@
+
+
+/var/lib/tftpboot/pxelinux.0: tftpboot/pxelinux.0
+	sudo install $< $@
+
+/var/lib/tftpboot/pxelinux.cfg/default: tftpboot/pxelinux.cfg/default
+	sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg 
+	sudo install $< $@
+
+tftp: \
+/var/lib/tftpboot/pxelinux.0 \
+/var/lib/tftpboot/pxelinux.cfg/default \
+/var/lib/tftpboot/wce/boot/menu.cfg \
+/var/lib/tftpboot/wce/live/filesystem.size \
 /var/lib/tftpboot/wce/live/filesystem.squashfs \
 /var/lib/tftpboot/wce/live/freedos.img \
 /var/lib/tftpboot/wce/live/gpxe.lkn \
-/var/lib/tftpboot/wce/live/initrd \
 /var/lib/tftpboot/wce/live/initrd.img \
 /var/lib/tftpboot/wce/live/memtest \
 /var/lib/tftpboot/wce/live/vmlinuz
