@@ -104,7 +104,7 @@ extract-cd/live/filesystem.squashfs: squashfs-installed $(LIVEPATCHES)
 	sudo chmod +w extract-cd/live/filesystem.packages
 	sudo chroot fsimage dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
 	sudo cp wce/filesystem.packages extract-cd/live/filesystem.packages
-	sudo rm -f extract-cd/live/filesystem.squashfs
+	# sudo rm -f extract-cd/live/filesystem.squashfs
 	sudo mksquashfs fsimage extract-cd/live/filesystem.squashfs
 	sudo chown $(USER):$(USER) extract-cd/live/filesystem.squashfs
 	sudo chmod 755 extract-cd/live/filesystem.squashfs
@@ -144,15 +144,19 @@ tftpboot/pxelinux.0:
 
 
 /var/lib/tftpboot/pxelinux.0: tftpboot/pxelinux.0
-	sudo install $< $@
+	sudo install -D $< $@
 
 /var/lib/tftpboot/pxelinux.cfg/default: tftpboot/pxelinux.cfg/default
-	sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg 
-	sudo install $< $@
+	sudo install -D $< $@
+
+/var/lib/tftpboot/%.c32: extract-cd/syslinux/%.c32
+	sudo install -D $< $@
 
 tftp: \
 /var/lib/tftpboot/pxelinux.0 \
 /var/lib/tftpboot/pxelinux.cfg/default \
+/var/lib/tftpboot/menu.c32 \
+/var/lib/tftpboot/vesamenu.c32 \
 /var/lib/tftpboot/wce/boot/menu.cfg \
 /var/lib/tftpboot/wce/live/filesystem.size \
 /var/lib/tftpboot/wce/live/filesystem.squashfs \
