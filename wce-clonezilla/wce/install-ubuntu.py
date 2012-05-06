@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse
+import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime
 
 fstab_template = '''# /etc/fstab: static file system information.
 #
@@ -517,6 +517,30 @@ class disk:
         print >> release, "installation-uuid: %s" % uuidgen()
         pass
 
+
+
+    def image_disk(self, stem_name):
+        if  not os.path.exists("/mnt/www/wce-disk-images"):
+            return
+
+        self.mount_disk()
+
+        subprocess.call("rm -f /mnt/disk2/var/lib/world-computer-exchange/access-timestamp /mnt/disk2/var/lib/world-computer-exchange/computer-uuid /mnt/disk2/etc/udev/rules.d/70-persistent-cd.rules /mnt/disk2/etc/udev/rules.d/70-persistent-net.rules", shell=True)
+
+        self.unmount_disk()
+
+        self.imagename = "%s-%s.partclone.gz" % (stem_name, datetime.date.today().isoformat())
+
+        subprocess.call("/sbin/e2fsck -f -y %s1" % self.device_name, shell=True)
+        subprocess.call("/sbin/resize2fs -M %s1" % self.device_name, shell=True)
+        subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o - | pigz -9 > /mnt/www/wce-disk-images/wce-%s" % (self.device_name, self.imagename), shell=True)
+        subprocess.call("/sbin/resize2fs %s1" % self.device_name, shell=True)
+        pass
+
+    def unmount_disk(self):
+        # Cheating
+        subprocess.call("umount /mnt/disk2", shell=True)
+        pass
 
     pass
 
@@ -1097,7 +1121,8 @@ def get_net_disk_images():
             if wget.returncode == 0:
                 for line in out.split('\n'):
                     transport_scheme = get_transport_scheme(line)
-                    if transport_scheme:
+                    # Only accept ftp/http
+                    if transport_scheme and (transport_scheme == "ftp" or transport_scheme == "http"):
                         images.append(line)
                         pass
                     pass
@@ -1242,7 +1267,8 @@ def try_hook(hook_name):
 
 
 def main():
-    global mounted_devices, disk_images
+    global mounted_devices, disk_images, dlg
+
     (active_ethernet, bad_cards) = detect_ethernet()
     if not active_ethernet:
         print """
@@ -1257,8 +1283,14 @@ def main():
 
     disk_images = get_net_disk_images() + get_live_disk_images()
     if len(disk_images) <= 0:
-        print "There is no disk image on this media or network."
-        pass
+        dlg.msgbox("""
+There is no disk image on this media or network.
+It means either the network is not connected, the server
+is not working, or the server does not have "wce-disk-image.txt"
+file in the HTTP server document directory.
+Talk to the admin of installation server."""
+                   )
+        raise Exception("No disk images")
 
     disks = get_disks(False)
     targets = []
@@ -1305,7 +1337,6 @@ def main():
 
     memsize = get_memory_size()
     if len(targets) > 0:
-
         for target in targets:
             target.partclone_image = choose_disk_image("Please choose a disk image for %s." % target.device_name, disk_images)
             pass
@@ -1420,9 +1451,9 @@ def detect_cpu_type():
 
     # Patch up the CPU speed. cpuinfo seems to show the current CPU speed,
     # not the max speed
-    cpuinfo_max_freq = "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"
-    if os.path.exists(cpuinfo_max_freq):
-        f = open(cpuinfo_max_freq)
+    scaling_max_freq = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq"
+    if os.path.exists(scaling_max_freq):
+        f = open(scaling_max_freq)
         speed = f.read()
         f.close()
         cpu_speed = string.atol(speed) / 1000
@@ -1644,8 +1675,7 @@ def reboot():
     pass
 
 
-
-if __name__ == "__main__":
+def install_ubuntu():
     global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path, dlg
     try:
         import dialog
@@ -1796,4 +1826,122 @@ if __name__ == "__main__":
         pass
     print "If you want to restart the installation, type\nsudo python %s" % sys.argv[0]
     pass
+
+
+def image_disk():
+    global mounted_devices, mounted_partitions, dlg
+    import dialog
+    dlg = dialog.Dialog()
+
+    stem_name = "wce"
+
+    has_network = None
+    if is_network_connected():
+        router_ip_address = get_router_ip_address()
+        if not router_ip_address:
+            sys.exit(1)
+            pass
+
+        # Mount the NFS to /mnt/www
+        if not os.path.exists("/mnt/www"):
+            os.mkdir("/mnt/www")
+            pass
+
+        subprocess.call("mount -t nfs %s:/var/www /mnt/www" % router_ip_address, shell=True)
+
+        if not os.path.exists("/mnt/www/wce-disk-images"):
+            print "NFS mount did not mount /mnt/www/wce-disk-images"
+            sys.exit(1)
+        pass
+
+    try:
+        (active_ethernet, bad_cards) = detect_ethernet()
+        if not active_ethernet:
+            print """
+************************************************************
+*        Ethernet Interface is not detected.               *
+************************************************************
+"""
+            pass
+
+
+        disks = get_disks(False)
+        sources = []
+        index = 1
+        n_free_disk = 0
+        first_source = None
+        print "Detected disks"
+        for d in disks:
+            if mounted_devices.has_key(d.device_name):
+                print "%3d : %s  - mounted %s" % (index, d.device_name, mounted_devices[d.device_name])
+            else:
+                print "%3d : %s" % (index, d.device_name)
+                n_free_disk = n_free_disk + 1
+                if n_free_disk == 1:
+                    first_source = index - 1
+                    pass
+                pass
+            index += 1
+            pass
+
+        if n_free_disk > 1:
+            print " NOTE: Mounted disks cannot be the imaging source."
+
+            selection = getpass._raw_input("  space separated: ")
+            for which in selection.split(" "):
+                try:
+                    index = string.atoi(which) - 1
+                    if not disks[index].mounted:
+                        sources.append(disks[index])
+                    else:
+                        print "%s is mounted and cannot be the source." % disks[index].device_name
+                        pass
+                except Exception, e:
+                    print "Bad input for picking disk"
+                    raise e
+                pass
+            pass
+        else:
+            if first_source != None:
+                sources.append(disks[first_source])
+                pass
+            pass
+
+
+        if len(sources) > 0:
+            for source in sources:
+                source.image_disk(stem_name)
+                pass
+            pass
+        else:
+            print "**************************************************"
+            print " Please make sure a disk exists, and not mounted."
+            print "**************************************************"
+            pass
+
+        print ""
+        print "**********************"
+        print "  Imaging complete."
+        print "**********************"
+        print ""
+        pass
+    except (KeyboardInterrupt, SystemExit), e:
+        print "Disk imaging interrupted."
+        raise e
+        pass
+    except Exception, e:
+        print "Disk imaging interrupted."
+        print str(e)
+        raise e
+        pass
+    pass
+
+
+if __name__ == "__main__":
+    if (len(sys.argv) > 1) and (sys.argv[1] == "--image-disk"):
+        image_disk()
+        pass
+    if (len(sys.argv) == 1):
+        install_ubuntu()
+        pass
 

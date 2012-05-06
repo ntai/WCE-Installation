@@ -17,6 +17,7 @@ DISKIMAGES :=
 
 LIVEPATCHES := \
  fsimage/wce.py \
+ fsimage/image-disk.py \
  fsimage/etc/ocs/ocs-live.conf \
  fsimage/etc/default/console-setup \
  fsimage/opt/drbl/sbin/ocs-live-wce \
@@ -64,6 +65,9 @@ fsimage: extract-cd add-packages.sh wce/sources.list
 fsimage/wce.py: wce/install-ubuntu.py
 	sudo cp $< $@
 
+fsimage/image-disk.py: wce/image-disk.py
+	sudo cp $< $@
+
 fsimage/etc/ocs/ocs-live.conf: wce/ocs-live.conf
 	sudo cp $< $@
 
@@ -104,7 +108,7 @@ extract-cd/live/filesystem.squashfs: squashfs-installed $(LIVEPATCHES)
 	sudo chmod +w extract-cd/live/filesystem.packages
 	sudo chroot fsimage dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
 	sudo cp wce/filesystem.packages extract-cd/live/filesystem.packages
-	# sudo rm -f extract-cd/live/filesystem.squashfs
+	sudo rm -f extract-cd/live/filesystem.squashfs
 	sudo mksquashfs fsimage extract-cd/live/filesystem.squashfs
 	sudo chown $(USER):$(USER) extract-cd/live/filesystem.squashfs
 	sudo chmod 755 extract-cd/live/filesystem.squashfs

@@ -1,0 +1,5 @@
+*.iso
+genisoimage-installed
+squashfs-installed
+extract-cd
+fsimage
