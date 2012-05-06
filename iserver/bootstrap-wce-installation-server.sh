@@ -1,6 +1,6 @@
 #!/bin/sh
 
-for pkg in make openbsd-inetd openssh-server lighttpd dnsmasq atftpd git genisoimage
+for pkg in make openbsd-inetd openssh-server lighttpd dnsmasq atftpd git genisoimage nfs-kernel-server
 do
   status=$(dpkg-query -s $pkg 2>/dev/null | grep Status: | cut -d ' ' -f 4)
   if [ x$status != xinstalled ] ; then
