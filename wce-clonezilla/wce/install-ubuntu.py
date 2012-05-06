@@ -533,7 +533,7 @@ class disk:
 
         subprocess.call("/sbin/e2fsck -f -y %s1" % self.device_name, shell=True)
         subprocess.call("/sbin/resize2fs -M %s1" % self.device_name, shell=True)
-        subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o - | pigz -9 > /mnt/www/wce-disk-images/wce-%s" % (self.device_name, self.imagename), shell=True)
+        subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o - | pigz -9 > /mnt/www/wce-disk-images/%s" % (self.device_name, self.imagename), shell=True)
         subprocess.call("/sbin/resize2fs %s1" % self.device_name, shell=True)
         pass
 
