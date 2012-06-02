@@ -1,6 +1,6 @@
 #!/bin/sh
 
-for pkg in make openbsd-inetd openssh-server lighttpd dnsmasq atftpd git genisoimage nfs-kernel-server
+for pkg in make openbsd-inetd openssh-server lighttpd dnsmasq atftpd git genisoimage nfs-kernel-server vsftpd
 do
   status=$(dpkg-query -s $pkg 2>/dev/null | grep Status: | cut -d ' ' -f 4)
   if [ x$status != xinstalled ] ; then
@@ -78,6 +78,23 @@ conf-dir=/etc/dnsmasq.d
 EOF
 
 sudo install /tmp/dnsmasq.conf /etc/dnsmasq.conf
+
+
+cat > /tmp/vsftpd.conf <<EOF
+listen=YES
+anonymous_enable=YES
+dirmessage_enable=NO
+use_localtime=YES
+xferlog_enable=NO
+connect_from_port_20=YES
+chroot_list_enable=YES
+pam_service_name=vsftpd
+ls_recurse_enable=YES
+anon_root=/var/www
+EOF
+
+sudo install /tmp/vsftpd.conf /etc/vsftpd.conf
+
 
 if [ ! -d WCE-Installation ] ; then
 git clone git://github.com/ntai/WCE-Installation.git

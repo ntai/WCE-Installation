@@ -202,7 +202,7 @@ class disk:
         self.serial_no = ""
         pass
 
-    def install_ubuntu(self, memsize):
+    def install_ubuntu(self, memsize, newhostname):
         ask_continue = True
         try:
             self.partition_disk(memsize)
@@ -222,7 +222,7 @@ class disk:
         self.partclone_restore_disk(self.partclone_image)
         self.assign_uuid_to_partitions()
         self.mount_disk()
-        self.finalize_disk()
+        self.finalize_disk(newhostname)
         self.create_wce_tag(self.partclone_image)
         pass
 
@@ -407,11 +407,12 @@ class disk:
                 break
             pass
 
+        retcode = subprocess.call("/sbin/e2fsck -f -y %s1" % (self.device_name), shell=True)
         retcode = subprocess.call("resize2fs -p %s1" % (self.device_name), shell=True)
         pass
 
 
-    def finalize_disk(self):
+    def finalize_disk(self, newhostname):
         print "Finalizing disk"
 
         blkid = subprocess.Popen(["blkid"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -438,38 +439,32 @@ class disk:
         fstab.write(fstab_template % (self.uuid1, self.uuid2))
         fstab.close()
 
-        newhostname = "wce%s" % self.uuid1[1:8]
+        #
+        # New hostname
+        #
+        if newhostname:
+            # Set up the /etc/hostname
+            hostname_file = open("/mnt/disk2/etc/hostname", "w")
+            hostname_file.write("%s\n" % newhostname)
+            hostname_file.close()
 
-        ip = subprocess.Popen(["ip", "addr", "show", "scope", "link"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        (out, err) = ip.communicate()
-        mac_addr = ""
-        try:
-            mac_addr = re.findall("link/ether\s+(..):(..):(..):(..):(..):(..)", out)[0]
-            newhostname = "wce%s%s%s" % (mac_addr[3], mac_addr[4], mac_addr[5])
-        except:
-            pass
+            # Set up the /etc/hosts file
+            hosts = open("/mnt/disk2/etc/hosts", "r")
+            lines = hosts.readlines()
+            hosts.close()
+            hosts = open("/mnt/disk2/etc/hosts", "w")
 
-        # Set up the /etc/hostname
-        hostname_file = open("/mnt/disk2/etc/hostname", "w")
-        hostname_file.write("%s\n" % newhostname)
-        hostname_file.close()
-
-        # Set up the /etc/hosts file
-        hosts = open("/mnt/disk2/etc/hosts", "r")
-        lines = hosts.readlines()
-        hosts.close()
-        hosts = open("/mnt/disk2/etc/hosts", "w")
-
-        this_host = re.compile(r"127\.0\.1\.1\s+[a-z_A-Z0-9]+\n")
-        for line in lines:
-            m = this_host.match(line)
-            if m:
-                hosts.write("127.0.1.1\t%s\n" % newhostname)
-            else:
-                hosts.write(line)
+            this_host = re.compile(r"127\.0\.1\.1\s+[a-z_A-Z0-9]+\n")
+            for line in lines:
+                m = this_host.match(line)
+                if m:
+                    hosts.write("127.0.1.1\t%s\n" % newhostname)
+                else:
+                    hosts.write(line)
+                    pass
                 pass
+            hosts.close()
             pass
-        hosts.close()
 
         #
         # Remove the persistent rules
@@ -516,7 +511,6 @@ class disk:
         print >> release, "wce-contents: %s" % get_filename_stem(image_file_name)
         print >> release, "installation-uuid: %s" % uuidgen()
         pass
-
 
 
     def image_disk(self, stem_name):
@@ -1235,13 +1229,11 @@ def try_hook(hook_name):
     router_ip_address = get_router_ip_address()
     if router_ip_address:
         urls.append("http://%s/%s.py" % (router_ip_address, hook_name))
-        urls.append("ftp://%s/%s.py" % (router_ip_address, hook_name))
         urls.append("http://%s/%s.sh" % (router_ip_address, hook_name))
-        urls.append("ftp://%s/%s.sh" % (router_ip_address, hook_name))
         pass
 
     for url in urls:
-        print "Wait..."
+        print "Trying %s..." % url
         try:
             wget = subprocess.Popen("wget -q -O - -T 2 --dns-timeout=2 %s" % url, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             (out, err) = wget.communicate()
@@ -1266,7 +1258,7 @@ def try_hook(hook_name):
     return
 
 
-def main():
+def main(generate_hostname):
     global mounted_devices, disk_images, dlg
 
     (active_ethernet, bad_cards) = detect_ethernet()
@@ -1356,7 +1348,13 @@ Talk to the admin of installation server."""
             pass
 
         for target in targets:
-            target.install_ubuntu(memsize)
+            if generate_hostname:
+                new_id = uuidgen()
+                newhostname = "wce%s" % new_id[1:8]
+            else:
+                newhostname = None
+                pass
+            target.install_ubuntu(memsize, newhostname)
             pass
         pass
     else:
@@ -1485,7 +1483,8 @@ def triage(output):
     subprocess.call("clear", shell=True)
     print >> output, ""
     print >> output, "CPU Level: P%d - %dMhz" % (cpu_class, cpu_speed)
-    print >> output, "  %s: Cores: %d cores, Bogomips: %s" % (model_name, cpu_cores, bogomips)
+    print >> output, "  %s" % (model_name)
+    print >> output, "  Cores: %d cores, Bogomips: %s" % (cpu_cores, bogomips)
 
     if ram_type == None:
         ram_type = "Unknown"
@@ -1806,7 +1805,7 @@ def install_ubuntu():
 
     try_hook("pre-installation")
     try:
-        main()
+        main(True)
         print ""
         print "**********************"
         print "Installation complete."
@@ -1937,10 +1936,97 @@ def image_disk():
     pass
 
 
+
+def install_iserver():
+    global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path, dlg
+    try:
+        import dialog
+        dlg = dialog.Dialog()
+    except:
+        dlg = None
+        pass
+    wce_disk_image_path = ["/live/image/wce-disk-images"]
+
+    # Make sure dialog works
+    # This also is a way to wait for the network to come up
+
+    has_network = None
+    while True:
+        has_network = get_router_ip_address() != None
+        # If no network, just wait for the machine to reboot.
+        if (not has_network):
+            print ""
+            yes_no = getpass._raw_input("Reboot (i=Install)? ([Y]/n/i) ")
+            if ((len(yes_no) == 0) or (yes_no[0].lower() == 'y')):
+                reboot()
+                sys.exit(0)
+                pass
+            if (len(yes_no) > 0):
+                what = yes_no[0].lower()
+                if what == 'i':
+                    break
+                pass
+            pass
+        else:
+            break
+        pass
+
+    disks = get_disks(False)
+    if len(disks) == 0:
+        print "Hard Drive: NOT DETECTED -- INSTALL A DISK"
+        pass
+
+    mount_usb_disks()
+    print ""
+    print "HIT RETURN TO HOLD"
+    n = 10
+    step = 1
+    while n > 0:
+        sin, sout, sx = select.select([sys.stdin.fileno()], [], [], 1)
+        sys.stdout.write("\rProceed installation... %3d   " % n)
+        sys.stdout.flush()
+        if len(sin) > 0:
+            sys.stdout.write("\r****************************")
+            sys.stdout.flush()
+            sys.stdin.read(1)
+            step = (step + 1) % 2
+            pass
+        n = n - step
+        pass
+
+    try_hook("iserver-pre-installation")
+    try:
+        main(False)
+        print ""
+        print "*********************************************"
+        print "Installation of Installation server complete."
+        print "*********************************************"
+        print ""
+        try_hook("iserver-post-installation")
+        reboot()
+        pass
+    except (KeyboardInterrupt, SystemExit), e:
+        print "Installation interrupted."
+        raise e
+        pass
+    except Exception, e:
+        print "Installation interrupted."
+        print str(e)
+        raise e
+        pass
+    print "If you want to restart the installation, type\nsudo python %s" % sys.argv[0]
+    pass
+
+
 if __name__ == "__main__":
     if (len(sys.argv) > 1) and (sys.argv[1] == "--image-disk"):
         image_disk()
         pass
+
+    if (len(sys.argv) > 1) and (sys.argv[1] == "--install-iserver"):
+        install_iserver()
+        pass
+
     if (len(sys.argv) == 1):
         install_ubuntu()
         pass

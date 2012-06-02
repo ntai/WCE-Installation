@@ -18,6 +18,7 @@ DISKIMAGES :=
 LIVEPATCHES := \
  fsimage/wce.py \
  fsimage/image-disk.py \
+ fsimage/iserver-install.py \
  fsimage/etc/ocs/ocs-live.conf \
  fsimage/etc/default/console-setup \
  fsimage/opt/drbl/sbin/ocs-live-wce \
@@ -66,6 +67,9 @@ fsimage/wce.py: wce/install-ubuntu.py
 	sudo cp $< $@
 
 fsimage/image-disk.py: wce/image-disk.py
+	sudo cp $< $@
+
+fsimage/iserver-install.py: wce/iserver-install.py
 	sudo cp $< $@
 
 fsimage/etc/ocs/ocs-live.conf: wce/ocs-live.conf
