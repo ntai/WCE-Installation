@@ -3,7 +3,7 @@
 #
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
-ISOTARGET := wce-clonezilla-v0.52-lite.iso
+ISOTARGET := wce-clonezilla-v0.53-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 
@@ -132,6 +132,8 @@ gpg-key:
 	wget -q http://drbl.org/GPG-KEY-DRBL -O- | sudo apt-key add -
 	wget -q http://drbl.sourceforge.net/GPG-KEY-DRBL -O- | sudo apt-key add -
 
+/usr/lib/syslinux:
+	sudo apt-get -y install syslinux
 
 /var/lib/tftpboot/wce/live/% : extract-cd/live/%
 	[ -d /var/lib/tftpboot/wce/live/ ] || sudo mkdir -p /var/lib/tftpboot/wce/live
@@ -147,10 +149,9 @@ gpg-key:
 /var/lib/tftpboot/pxelinux.cfg:
 	sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
-tftpboot/pxelinux.0:
+tftpboot/pxelinux.0: /usr/lib/syslinux
 	[ -d tftpboot ] || mkdir tftpboot
-	wget http://archive.ubuntu.com/ubuntu/dists/maverick/main/installer-i386/current/images/netboot/pxelinux.0 -O $@
-
+	cp -p /usr/lib/syslinux/pxelinux.0 $@
 
 /var/lib/tftpboot/pxelinux.0: tftpboot/pxelinux.0
 	sudo install -D $< $@
@@ -158,7 +159,7 @@ tftpboot/pxelinux.0:
 /var/lib/tftpboot/pxelinux.cfg/default: tftpboot/pxelinux.cfg/default
 	sudo install -D $< $@
 
-/var/lib/tftpboot/%.c32: extract-cd/syslinux/%.c32
+/var/lib/tftpboot/%.c32: /usr/lib/syslinux/%.c32
 	sudo install -D $< $@
 
 tftp: \

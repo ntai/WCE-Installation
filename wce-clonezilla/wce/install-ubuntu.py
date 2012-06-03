@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime
+import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime, getopt, traceback
 
 fstab_template = '''# /etc/fstab: static file system information.
 #
@@ -224,6 +224,7 @@ class disk:
         self.mount_disk()
         self.finalize_disk(newhostname)
         self.create_wce_tag(self.partclone_image)
+        self.unmount_disk()
         pass
 
 
@@ -380,6 +381,11 @@ class disk:
             decomp = "gunzip -c"
         elif ext == ".xz":
             decomp = "unxz -c"
+        elif ext == ".partclone":
+            # aka no compression
+            decomp = "cat"
+        elif ext == ".lzo":
+            decomp = "lzop -dc"
         else:
             decomp = "gunzip -c"
             pass
@@ -388,7 +394,11 @@ class disk:
         if transport_scheme:
             retcode = subprocess.call("wget -q -O - '%s' | %s | partclone.ext4 -r -s - -o %s1" % (partclone_image_file, decomp, self.device_name), shell=True)
         else:
-            retcode = subprocess.call("%s '%s' | partclone.ext4 -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True)
+            if decomp == "cat":
+                retcode = subprocess.call("partclone.ext4 -r -s %s -o %s1" % (partclone_image_file, self.device_name), shell=True)
+            else:
+                retcode = subprocess.call("%s '%s' | partclone.ext4 -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True)
+                pass
             pass
 
         if retcode != 0:
@@ -795,8 +805,7 @@ def find_disk_device_files(devpath):
         device_file = devpath + letter
         if os.path.exists(device_file):
             result.append(device_file)
-        else:
-            break
+            pass
         pass
     return result
 
@@ -840,7 +849,7 @@ def disk_is_a_real_disk(disk_name):
 
 # This one gets the disks on IDE / SATA only
 def get_disks(list_mounted_disks):
-    global mounted_devices, mounted_partitions, usb_disks
+    global mounted_devices, mounted_partitions
 
     disks = []
 
@@ -869,10 +878,12 @@ def get_disks(list_mounted_disks):
 
     # Gather up the possible disks
     possible_disks = find_disk_device_files("/dev/hd") + find_disk_device_files("/dev/sd")
+    print "Possible disks = %s" % str(possible_disks)
     
     for disk_name in possible_disks:
         # Let's out right skip the mounted disk
         if mounted_devices.has_key(disk_name) and (not list_mounted_disks):
+            print "Mounted disk %s is not included in the candidnate." % disk_name
             continue
 
         # Now, I do double check that this is really a disk
@@ -917,6 +928,7 @@ def get_disks(list_mounted_disks):
                 pass
             pass
         except:
+            traceback.print_exc(file.sys.stdout)
             pass
 
         if not is_disk:
@@ -975,7 +987,7 @@ def get_disks(list_mounted_disks):
             pass
         pass
 
-    return disks
+    return disks, usb_disks
 
 
 def detect_optical_drives():
@@ -1044,8 +1056,8 @@ def detect_optical_drives():
 
 
 
-def mount_usb_disks():
-    global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path
+def mount_usb_disks(usb_disks):
+    global mounted_devices, mounted_partitions, wce_disk_image_path
     index = 1
     for disk in usb_disks:
         for part in disk.partitions:
@@ -1258,7 +1270,7 @@ def try_hook(hook_name):
     return
 
 
-def main(generate_hostname):
+def main(generate_hostname, disk_image_file, memory_size, include_usb_disks):
     global mounted_devices, disk_images, dlg
 
     (active_ethernet, bad_cards) = detect_ethernet()
@@ -1273,22 +1285,28 @@ def main(generate_hostname):
 
     print "At any point, if you want to interrupt the installation, hit Control-C"
 
-    disk_images = get_net_disk_images() + get_live_disk_images()
-    if len(disk_images) <= 0:
-        dlg.msgbox("""
+    if disk_image_file == None:
+        disk_images = get_net_disk_images() + get_live_disk_images()
+        if len(disk_images) <= 0:
+            dlg.msgbox("""
 There is no disk image on this media or network.
 It means either the network is not connected, the server
 is not working, or the server does not have "wce-disk-image.txt"
 file in the HTTP server document directory.
 Talk to the admin of installation server."""
-                   )
-        raise Exception("No disk images")
+                       )
+            raise Exception("No disk images")
+        pass
 
-    disks = get_disks(False)
+    disks, usb_disks = get_disks(False)
+    if include_usb_disks:
+        disks = disks + usb_disks
+        pass
     targets = []
     index = 1
     n_free_disk = 0
     first_target = None
+    print "Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
     print "Detected disks"
     for d in disks:
         if mounted_devices.has_key(d.device_name):
@@ -1327,10 +1345,19 @@ Talk to the admin of installation server."""
             pass
         pass
 
-    memsize = get_memory_size()
+    if memory_size:
+        memsize = memory_size
+    else:
+        memsize = get_memory_size()
+        pass
+
     if len(targets) > 0:
         for target in targets:
-            target.partclone_image = choose_disk_image("Please choose a disk image for %s." % target.device_name, disk_images)
+            if disk_image_file:
+                target.partclone_image = disk_image_file
+            else:
+                target.partclone_image = choose_disk_image("Please choose a disk image for %s." % target.device_name, disk_images)
+                pass
             pass
 
         if len(targets) == 1:
@@ -1474,7 +1501,7 @@ def triage(output):
     if total_memory == 0:
         total_memory = get_memory_size()
         pass
-    disks = get_disks(True)
+    disks, usb_disks = get_disks(True)
     n_nvidia, n_ati, n_vga = detect_video_cards()
     (ethernet_detected, bad_ethernet_cards) = detect_ethernet()
     sound_dev = detect_sound_device()
@@ -1571,7 +1598,7 @@ def triage(output):
         triage_result = False
         pass
     
-    return triage_result
+    return triage_result, disks, usb_disks
 
 
 def detect_sensor_modules(modules_path):
@@ -1674,8 +1701,8 @@ def reboot():
     pass
 
 
-def install_ubuntu():
-    global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path, dlg
+def triage_install():
+    global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
     try:
         import dialog
         dlg = dialog.Dialog()
@@ -1731,7 +1758,7 @@ def install_ubuntu():
     while True:
         # I do this extra work so that I can have a temp file.
         triage_output = open("/tmp/triage.txt", "w")
-        triage_result = triage(triage_output)
+        triage_result, disks, usb_disks = triage(triage_output)
         triage_output.close()
         result_displayed = False
 
@@ -1785,7 +1812,7 @@ def install_ubuntu():
             break
         pass
 
-    mount_usb_disks()
+    mount_usb_disks(usb_disks)
     print ""
     print "HIT RETURN TO HOLD"
     n = 10
@@ -1805,7 +1832,7 @@ def install_ubuntu():
 
     try_hook("pre-installation")
     try:
-        main(True)
+        main(True, None, None, False)
         print ""
         print "**********************"
         print "Installation complete."
@@ -1864,7 +1891,8 @@ def image_disk():
             pass
 
 
-        disks = get_disks(False)
+        disks, usb_disks = get_disks(False)
+        disks = disks + usb_disks
         sources = []
         index = 1
         n_free_disk = 0
@@ -1938,7 +1966,7 @@ def image_disk():
 
 
 def install_iserver():
-    global mounted_devices, mounted_partitions, usb_disks, wce_disk_image_path, dlg
+    global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
     try:
         import dialog
         dlg = dialog.Dialog()
@@ -1971,12 +1999,13 @@ def install_iserver():
             break
         pass
 
-    disks = get_disks(False)
+    disks, usb_disks = get_disks(False)
+    disks = disks
     if len(disks) == 0:
         print "Hard Drive: NOT DETECTED -- INSTALL A DISK"
         pass
 
-    mount_usb_disks()
+    mount_usb_disks(usb_disks)
     print ""
     print "HIT RETURN TO HOLD"
     n = 10
@@ -1996,7 +2025,7 @@ def install_iserver():
 
     try_hook("iserver-pre-installation")
     try:
-        main(False)
+        main(False, None, None, False)
         print ""
         print "*********************************************"
         print "Installation of Installation server complete."
@@ -2018,16 +2047,54 @@ def install_iserver():
     pass
 
 
+
+def batch_install(generate_host_name, image_file):
+    global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
+    try:
+        import dialog
+        dlg = dialog.Dialog()
+    except:
+        print "Please install Python dialog."
+        sys.exit(1)
+        pass
+
+    try:
+        main(generate_host_name, image_file, 2048, True)
+        pass
+    except (KeyboardInterrupt, SystemExit), e:
+        print "Installation interrupted."
+        raise e
+        pass
+    except Exception, e:
+        print "Installation interrupted."
+        print str(e)
+        raise e
+        pass
+    pass
+
+
 if __name__ == "__main__":
-    if (len(sys.argv) > 1) and (sys.argv[1] == "--image-disk"):
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host"])
+    except getopt.GetoptError, err:
+        # print help information and exit:
+        print str(err) # will print something like "option -a not recognized"
+        sys.exit(2)
+        pass
+
+    if (len(args) == 1 and args[0] == "--image-disk"):
         image_disk()
         pass
 
-    if (len(sys.argv) > 1) and (sys.argv[1] == "--install-iserver"):
+    if (len(args) == 1 and args[0] == "--install-iserver"):
         install_iserver()
         pass
 
+    if (len(opts) == 1 and opts[0][0] == "--batch-install"):
+        batch_install(args.count("no-unique-host") >= 1, opts[0][1])
+        pass
+
     if (len(sys.argv) == 1):
-        install_ubuntu()
+        triage_install()
         pass
 
