@@ -168,6 +168,7 @@ tftp: \
 /var/lib/tftpboot/menu.c32 \
 /var/lib/tftpboot/vesamenu.c32 \
 /var/lib/tftpboot/wce/boot/menu.cfg \
+/var/lib/tftpboot/wce/boot/wceboot.png \
 /var/lib/tftpboot/wce/live/filesystem.size \
 /var/lib/tftpboot/wce/live/filesystem.squashfs \
 /var/lib/tftpboot/wce/live/freedos.img \
