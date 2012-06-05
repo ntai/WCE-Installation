@@ -3,7 +3,8 @@
 #
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
-ISOTARGET := wce-clonezilla-v0.53-lite.iso
+VERSION := $(shell cat version)
+ISOTARGET := wce-clonezilla-v${VERSION}-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 
@@ -99,8 +100,10 @@ extract-cd/isolinux/wcebg1.png: wce/wcebg1.png
 extract-cd/isolinux/wcebg2.png: wce/wcebg2.png
 	sudo cp $< $@
 
-extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg
-	sudo cp $< $@
+extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg.template
+	sed s/###VERSION###/${VERSION}/g $< > wce/isolinux.cfg
+	sudo cp wce/isolinux.cfg $@
+	rm -f wce/isolinux.cfg
 
 
 squashfs-installed:

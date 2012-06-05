@@ -2,6 +2,11 @@
 
 import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime, getopt, traceback
 
+installer_version = "0.53"
+
+wce_release_file = '/mnt/disk2/etc/wce-release'
+
+
 fstab_template = '''# /etc/fstab: static file system information.
 #
 # Use 'blkid -o value -s UUID' to print the universally unique identifier
@@ -69,10 +74,10 @@ lspci_nm_re = re.compile(r'\s*([0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f])\s+"([0-9a-f]{4}
 
 disk_images = []
 
-
-
-
 class mkfs_failed(Exception):
+    pass
+
+class unmount_failed(Exception):
     pass
 
 
@@ -517,9 +522,12 @@ class disk:
 
     def create_wce_tag(self, image_file_name):
         # Set up the /etc/wce-release file
-        release = open("/mnt/disk2/etc/wce-release", "a+")
+        release = open(wce_release_file, "a+")
         print >> release, "wce-contents: %s" % get_filename_stem(image_file_name)
+        print >> release, "installer-version: %s" % installer_version
         print >> release, "installation-uuid: %s" % uuidgen()
+        print >> release, "installation-date: %s" % datetime.datetime.isoformat( datetime.datetime.utcnow() )
+        release.close()
         pass
 
 
@@ -542,9 +550,45 @@ class disk:
         pass
 
     def unmount_disk(self):
+        if not self.mounted:
+            return
+
         # Cheating
-        subprocess.call("umount /mnt/disk2", shell=True)
-        pass
+        for i in range(0, 30):
+            time.sleep(2)
+            retcode = subprocess.call("umount  /mnt/disk2", shell=True)
+            if retcode == 0:
+                self.mounted = False
+                return
+            pass
+        raise unmount_failed
+
+
+    def has_wce_release(self):
+        part1 = self.device_name + "1"
+        installed = False
+        for partition in self.partitions:
+            if partition.partition_name == part1 and partition.partition_type == '83':
+                # The parition 
+                try:
+                    self.mount_disk()
+                    if os.path.exists(wce_release_file):
+                        installed = True
+                        pass
+                    pass
+                except:
+                    traceback.print_exc(file.sys.stdout)
+                    pass
+
+                try:
+                    self.unmount_disk()
+                    time.sleep(2)
+                except:
+                    traceback.print_exc(file.sys.stdout)
+                    pass
+                break
+            pass
+        return installed
 
     pass
 
@@ -1270,7 +1314,8 @@ def try_hook(hook_name):
     return
 
 
-def main(generate_hostname, disk_image_file, memory_size, include_usb_disks):
+# force_installation: True - install new contents even if it already has WCE release
+def main(force_installation, generate_hostname, disk_image_file, memory_size, include_usb_disks):
     global mounted_devices, disk_images, dlg
 
     (active_ethernet, bad_cards) = detect_ethernet()
@@ -1306,6 +1351,7 @@ Talk to the admin of installation server."""
     index = 1
     n_free_disk = 0
     first_target = None
+    skipped = 0
     print "Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
     print "Detected disks"
     for d in disks:
@@ -1364,7 +1410,7 @@ Talk to the admin of installation server."""
             print ""
             print "Installing to %s with %s" % (disks[first_target].device_name, disks[first_target].partclone_image)
             print "Hit Control-C to stop the installation"
-            count = 3
+            count = 5
             while count > 0:
                 sys.stdout.write("\r     \r %2d " % count)
                 sys.stdout.flush()
@@ -1381,13 +1427,25 @@ Talk to the admin of installation server."""
             else:
                 newhostname = None
                 pass
-            target.install_ubuntu(memsize, newhostname)
+
+            if force_installation or (not target.has_wce_release()):
+                target.install_ubuntu(memsize, newhostname)
+            else:
+                print ""
+                print "Installation to %s is skipped since it appears the disk already has a WCE Ubuntu." % target.device_name
+                print ""
+                skipped = skipped+1
+                pass
             pass
         pass
     else:
         print "**************************************************"
         print " Please make sure a disk exists, and not mounted."
         print "**************************************************"
+        pass
+
+    if skipped > 0:
+        print "If you want to install to the skipped disk, use '--force-installation' option."
         pass
     pass
 
@@ -1814,25 +1872,10 @@ def triage_install():
 
     mount_usb_disks(usb_disks)
     print ""
-    print "HIT RETURN TO HOLD"
-    n = 10
-    step = 1
-    while n > 0:
-        sin, sout, sx = select.select([sys.stdin.fileno()], [], [], 1)
-        sys.stdout.write("\rProceed installation... %3d   " % n)
-        sys.stdout.flush()
-        if len(sin) > 0:
-            sys.stdout.write("\r****************************")
-            sys.stdout.flush()
-            sys.stdin.read(1)
-            step = (step + 1) % 2
-            pass
-        n = n - step
-        pass
 
     try_hook("pre-installation")
     try:
-        main(True, None, None, False)
+        main(True, True, None, None, False)
         print ""
         print "**********************"
         print "Installation complete."
@@ -2007,25 +2050,10 @@ def install_iserver():
 
     mount_usb_disks(usb_disks)
     print ""
-    print "HIT RETURN TO HOLD"
-    n = 10
-    step = 1
-    while n > 0:
-        sin, sout, sx = select.select([sys.stdin.fileno()], [], [], 1)
-        sys.stdout.write("\rProceed installation... %3d   " % n)
-        sys.stdout.flush()
-        if len(sin) > 0:
-            sys.stdout.write("\r****************************")
-            sys.stdout.flush()
-            sys.stdin.read(1)
-            step = (step + 1) % 2
-            pass
-        n = n - step
-        pass
 
     try_hook("iserver-pre-installation")
     try:
-        main(False, None, None, False)
+        main(True, False, None, None, False)
         print ""
         print "*********************************************"
         print "Installation of Installation server complete."
@@ -2048,7 +2076,7 @@ def install_iserver():
 
 
 
-def batch_install(generate_host_name, image_file):
+def batch_install(force_installation, generate_host_name, image_file):
     global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
     try:
         import dialog
@@ -2059,7 +2087,7 @@ def batch_install(generate_host_name, image_file):
         pass
 
     try:
-        main(generate_host_name, image_file, 2048, True)
+        main(force_installation, generate_host_name, image_file, 2048, True)
         pass
     except (KeyboardInterrupt, SystemExit), e:
         print "Installation interrupted."
@@ -2073,25 +2101,51 @@ def batch_install(generate_host_name, image_file):
     pass
 
 
+def check_installation():
+    disks, usb_disks = get_disks(False)
+    disks = disks + usb_disks
+    print "Disk count %d" % len(disks)
+    for disk in disks:
+        print "Disk %s" % (disk.device_name)
+        if disk.has_wce_release():
+            print "  WCE Ubuntu installed."
+        else:
+            print "  WCE Ubuntu NOT installed."
+            pass
+        for part in disk.partitions:
+            print "  Partition %s : %s" % (part.partition_name, part.partition_type)
+            pass
+        pass
+    pass
+
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
         sys.exit(2)
         pass
 
-    if (len(args) == 1 and args[0] == "--image-disk"):
+    if (len(opts) == 1 and opts[0][0] == "--image-disk"):
         image_disk()
         pass
 
-    if (len(args) == 1 and args[0] == "--install-iserver"):
+    if (len(opts) >= 1 and opts[0][0] == "--install-iserver"):
         install_iserver()
         pass
 
-    if (len(opts) == 1 and opts[0][0] == "--batch-install"):
-        batch_install(args.count("no-unique-host") >= 1, opts[0][1])
+    if (len(opts) >= 1 and opts[0][0] == "--batch-install"):
+        image_file = opts[0][1]
+        if (not image_file) or (len(image_file) == 0):
+            print "Image file is not specified. You need to give an image file after --batch-install"
+            sys.exit(2)
+            pass
+        batch_install(opts.count(('--force-installation', '')) >= 1, opts.count(('--no-unique-host', '')) >= 1, image_file)
+        pass
+
+    if (len(opts) >= 1 and opts[0][0] == "--check-installation"):
+        check_installation()
         pass
 
     if (len(sys.argv) == 1):
