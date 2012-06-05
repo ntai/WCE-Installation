@@ -100,7 +100,7 @@ extract-cd/isolinux/wcebg1.png: wce/wcebg1.png
 extract-cd/isolinux/wcebg2.png: wce/wcebg2.png
 	sudo cp $< $@
 
-extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg.template
+extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg.template version
 	sed s/###VERSION###/${VERSION}/g $< > wce/isolinux.cfg
 	sudo cp wce/isolinux.cfg $@
 	rm -f wce/isolinux.cfg
@@ -127,7 +127,7 @@ genisoimage-installed:
 	[ "$(GENISOIMAGE)" != "" ] || sudo apt-get install -y genisoimage
 	touch genisoimage-installed
 
-$(ISOTARGET): $(SOURCES) genisoimage-installed
+$(ISOTARGET): $(SOURCES) genisoimage-installed version
 	cd extract-cd;sudo genisoimage $(UDF_FLAGS) -D -r -V "$$IMAGE_NAME" -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o ../$(ISOTARGET) .
 
 
