@@ -25,6 +25,10 @@ This is run by cron.
 
 "/var/lib/world-computer-exchange/access-url" is the URL to
 access.
+The defalt/existing contents is
+http://wce.footprintllc.com/portals/0/PingBO1.html
+
+By editing the URL in the file, you can change the ping URL.
 
 access-world-computer-exchange uses two more files.
 /var/lib/world-computer-exchange/computer-uuid
