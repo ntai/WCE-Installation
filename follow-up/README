@@ -5,6 +5,30 @@ WCE installs.
 It is simple that we have a python script that runs periodically.
 To run periodically, we use cron.
 
+How to change the PING URL
+
+The contents of "/var/lib/world-computer-exchange/access-url"
+is the URL to access.
+Edit it to the URL you need it to be.
+
+
+How to install this:
+
+A way to install these files is to create a tar file,
+and (cd / ; tar xf wce-follow-up.tar) to put the all files.
+
+Makefile included can produce the tar file with necessary
+permissions, etc. so all you have to do is to untar at the
+installation.
+
+Alternatively, you can make the disk image with these files
+already installed.
+When you this, make sure to remove two files.
+
+rm -f "/var/lib/world-computer-exchange/access-timestamp"
+rm -f "/var/lib/world-computer-exchange/computer-uuid"
+
+
 
 How it works:
 
@@ -28,7 +52,6 @@ access.
 The defalt/existing contents is
 http://wce.footprintllc.com/portals/0/PingBO1.html
 
-By editing the URL in the file, you can change the ping URL.
 
 access-world-computer-exchange uses two more files.
 /var/lib/world-computer-exchange/computer-uuid
@@ -44,23 +67,6 @@ access-timestamp: This is the last successful PING access.
 Once access-world-computer-exchange succeeds the PING,
 it waits at least 23 days. (more than 3 weeks and less than
 4 weeks, enough for once a month.)
-
-
-How to install this:
-
-A way to install these files is to create a tar file,
-and (cd / ; tar xf wce-follow-up.tar) to put the all files.
-
-Makefile included can produce the tar file with necessary
-permissions, etc. so all you have to do is to untar at the
-installation.
-
-Alternatively, you can make the disk image with these files
-already installed.
-When you this, make sure to remove two files.
-
-rm -f "/var/lib/world-computer-exchange/access-timestamp"
-rm -f "/var/lib/world-computer-exchange/computer-uuid"
 
 
 
