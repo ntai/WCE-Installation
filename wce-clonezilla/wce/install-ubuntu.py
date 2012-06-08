@@ -2,7 +2,7 @@
 
 import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime, getopt, traceback
 
-installer_version = "0.53"
+installer_version = "0.60"
 
 wce_release_file = '/mnt/disk2/etc/wce-release'
 
@@ -973,7 +973,7 @@ def get_disks(list_mounted_disks):
     for disk_name in possible_disks:
         # Let's out right skip the mounted disk
         if mounted_devices.has_key(disk_name) and (not list_mounted_disks):
-            print "Mounted disk %s is not included in the candidnate." % disk_name
+            print "Mounted disk %s is not included in the candidate." % disk_name
             continue
 
         # Now, I do double check that this is really a disk
@@ -1859,6 +1859,7 @@ def triage_install():
             btitle = "Triage Output - Failed"
             triage_dlg = failure_dlg
             pass
+        dlg = triage_dlg
 
         try:
             if (not has_network) or (not triage_result):
