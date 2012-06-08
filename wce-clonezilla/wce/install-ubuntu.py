@@ -253,7 +253,7 @@ class disk:
         self.serial_no = ""
         pass
 
-    def install_ubuntu(self, memsize, newhostname):
+    def install_ubuntu(self, memsize, newhostname, grub_cfg_patch):
         ask_continue = True
         try:
             self.partition_disk(memsize)
@@ -273,7 +273,7 @@ class disk:
         self.partclone_restore_disk(self.partclone_image)
         self.assign_uuid_to_partitions()
         self.mount_disk()
-        self.finalize_disk(newhostname)
+        self.finalize_disk(newhostname, grub_cfg_patch)
         self.create_wce_tag(self.partclone_image)
         self.unmount_disk()
         pass
@@ -473,7 +473,7 @@ class disk:
         pass
 
 
-    def finalize_disk(self, newhostname):
+    def finalize_disk(self, newhostname, grub_cfg_patch):
         print "Finalizing disk"
 
         blkid = subprocess.Popen(["blkid"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -562,7 +562,7 @@ class disk:
             to_do = to_do + "apt-get -q -y --force-yes purge `dpkg --get-selections | cut -f 1 | grep -v xorg | grep nvidia-`\n"
             pass
 
-        chroot_and_exec(to_do)
+        chroot_and_exec(to_do, self.uuid1, grub_cfg_patch)
         pass
 
 
@@ -685,7 +685,7 @@ class optical_drive:
     pass
 
 
-def chroot_and_exec(things_to_do):
+def chroot_and_exec(things_to_do, root_partition_uuid, grub_cfg_patch):
     print "chroot and execute"
     try:
         subprocess.call("mount --bind /dev/ /mnt/disk2/dev", shell=True)
@@ -698,20 +698,28 @@ echo "Here we go!"
 mount -t proc none /proc
 mount -t sysfs none /sys
 mount -t devpts none /dev/pts
-echo "Here we go!"
 #
 """)
 
     install_script.write(things_to_do)
 
-    install_script.write("""#
+    install_script.write('''#
 chmod +rw /boot/grub/grub.cfg
+export GRUB_DEVICE_UUID="%s"
+export GRUB_DISABLE_OS_PROBER=true
 grub-mkconfig -o /boot/grub/grub.cfg
+''' % root_partition_uuid)
+
+    if grub_cfg_patch:
+        install_script.write(grub_cfg_patch)
+        pass
+
+    install_script.write('''#
 chmod 444 /boot/grub/grub.cfg
 umount /proc || umount -lf /proc
 umount /sys
 umount /dev/pts
-""")
+''')
 
     install_script.close()
     
@@ -1369,7 +1377,7 @@ def try_hook(hook_name):
 
 
 # force_installation: True - install new contents even if it already has WCE release
-def main(force_installation, generate_hostname, disk_image_file, memory_size, include_usb_disks):
+def main(force_installation, generate_hostname, disk_image_file, memory_size, include_usb_disks, grub_cfg_patch):
     global mounted_devices, disk_images, dlg
 
     (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
@@ -1462,7 +1470,7 @@ Talk to the admin of installation server.""",
 
         if len(targets) == 1:
             print ""
-            print "Installing to %s with %s" % (disks[first_target].device_name, disks[first_target].partclone_image)
+            print "Installing to %s with %s" % (targets[0].device_name, targets[0].partclone_image)
             print "Hit Control-C to stop the installation"
             count = 5
             while count > 0:
@@ -1483,7 +1491,7 @@ Talk to the admin of installation server.""",
                 pass
 
             if force_installation or (not target.has_wce_release()):
-                target.install_ubuntu(memsize, newhostname)
+                target.install_ubuntu(memsize, newhostname, grub_cfg_patch)
             else:
                 print ""
                 print "Installation to %s is skipped since it appears the disk already has a WCE Ubuntu." % target.device_name
@@ -1967,7 +1975,7 @@ def triage_install():
 
     try_hook("pre-installation")
     try:
-        main(True, True, None, None, False)
+        main(True, True, None, None, False, None)
         print ""
         print "**********************"
         print "Installation complete."
@@ -2145,7 +2153,7 @@ def install_iserver(args):
 
     try_hook("iserver-pre-installation")
     try:
-        main(True, False, None, None, False)
+        main(True, False, None, None, False, None)
         print ""
         print "*********************************************"
         print "Installation of Installation server complete."
@@ -2187,8 +2195,13 @@ def batch_install(args):
         sys.exit(1)
         pass
 
+    patch_grub_cfg = '''#
+cp /boot/grub/grub.cfg /tmp/grub.cfg
+sed "s/root='(hd.,1)'/root='(hd0,1)'/g" /tmp/grub.cfg > /boot/grub/grub.cfg
+'''
+
     try:
-        main(force_installation, generate_host_name, image_file, 2048, True)
+        main(force_installation, generate_host_name, image_file, 2048, True, patch_grub_cfg)
         pass
     except (KeyboardInterrupt, SystemExit), e:
         print "Installation interrupted."
