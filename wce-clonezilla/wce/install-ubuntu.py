@@ -21,6 +21,52 @@ UUID=%s /               ext4    errors=remount-ro 0       1
 UUID=%s none            swap    sw              0       0
 '''
 
+dialog_rc_filename = "/tmp/triage-dialog-rc"
+triage_txt = "/tmp/triage.txt"
+
+dialog_rc_failure_template = '''
+aspect = 0
+separate_widget = ""
+tab_len = 0
+visit_items = OFF
+use_shadow = OFF
+use_colors = ON
+screen_color = (YELLOW,RED,ON)
+shadow_color = (BLACK,BLACK,ON)
+dialog_color = (BLACK,WHITE,OFF)
+title_color = (BLUE,WHITE,ON)
+border_color = (WHITE,WHITE,ON)
+button_active_color = (WHITE,BLUE,ON)
+button_inactive_color = (BLACK,WHITE,OFF)
+button_key_active_color = (WHITE,BLUE,ON)
+button_key_inactive_color = (RED,WHITE,OFF)
+button_label_active_color = (YELLOW,BLUE,ON)
+button_label_inactive_color = (BLACK,WHITE,ON)
+inputbox_color = (BLACK,WHITE,OFF)
+inputbox_border_color = (BLACK,WHITE,OFF)
+searchbox_color = (BLACK,WHITE,OFF)
+searchbox_title_color = (BLUE,WHITE,ON)
+searchbox_border_color = (WHITE,WHITE,ON)
+position_indicator_color = (BLUE,WHITE,ON)
+menubox_color = (BLACK,WHITE,OFF)
+menubox_border_color = (WHITE,WHITE,ON)
+item_color = (BLACK,WHITE,OFF)
+item_selected_color = (WHITE,BLUE,ON)
+tag_color = (BLUE,WHITE,ON)
+tag_selected_color = (YELLOW,BLUE,ON)
+tag_key_color = (RED,WHITE,OFF)
+tag_key_selected_color = (RED,BLUE,ON)
+check_color = (BLACK,WHITE,OFF)
+check_selected_color = (WHITE,BLUE,ON)
+uarrow_color = (GREEN,WHITE,ON)
+darrow_color = (GREEN,WHITE,ON)
+itemhelp_color = (WHITE,BLACK,OFF)
+form_active_text_color = (WHITE,BLUE,ON)
+form_text_color = (WHITE,CYAN,ON)
+form_item_readonly_color = (CYAN,WHITE,ON)
+'''
+
+
 #
 # SIS 191 gigabit controller 1039:0191 does not work.
 # 
@@ -549,13 +595,13 @@ class disk:
         subprocess.call("/sbin/resize2fs %s1" % self.device_name, shell=True)
         pass
 
+
     def unmount_disk(self):
         if not self.mounted:
             return
-
-        # Cheating
         for i in range(0, 30):
-            time.sleep(2)
+            retcode = subprocess.call("sync", shell=True)
+            time.sleep(0.5)
             retcode = subprocess.call("umount  /mnt/disk2", shell=True)
             if retcode == 0:
                 self.mounted = False
@@ -1160,13 +1206,11 @@ def get_net_disk_images():
     images = []
     urls = []
     urls = urls + ["http://wceinstall/wce-disk-images.txt",
-                   "ftp://wceinstall/wce-disk-images.txt",
-                   "http://wcesrv/wce-disk-images.txt",
-                   "ftp://wcesrv/wce-disk-images.txt"]
+                   "http://wcesrv/wce-disk-images.txt"]
 
     for url in urls:
         try:
-            wget = subprocess.Popen("wget -q -O - -T 3 --dns-timeout=3 %s" % url, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            wget = subprocess.Popen("wget -q -O - -T 2 --dns-timeout=2 %s" % url, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             (out, err) = wget.communicate()
             if wget.returncode == 0:
                 for line in out.split('\n'):
@@ -1263,7 +1307,17 @@ def detect_ethernet():
             pass
     except:
         pass
-    return (ethernet_detected, blacklisted_cards)
+
+    eth_entry_re = re.compile(r"\d+: (eth\d+):")
+    eth_devices = []
+    for line in out.split('\n'):
+        m = eth_entry_re.match(line.strip())
+        if m:
+            eth_devices.append(m.group(1))
+            pass
+        pass
+
+    return (ethernet_detected, blacklisted_cards, eth_devices)
 
 
 def detect_sound_device():
@@ -1318,7 +1372,7 @@ def try_hook(hook_name):
 def main(force_installation, generate_hostname, disk_image_file, memory_size, include_usb_disks):
     global mounted_devices, disk_images, dlg
 
-    (active_ethernet, bad_cards) = detect_ethernet()
+    (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
     if not active_ethernet:
         print """
 ************************************************************
@@ -1338,8 +1392,8 @@ There is no disk image on this media or network.
 It means either the network is not connected, the server
 is not working, or the server does not have "wce-disk-image.txt"
 file in the HTTP server document directory.
-Talk to the admin of installation server."""
-                       )
+Talk to the admin of installation server.""",
+                       width=70, height=10)
             raise Exception("No disk images")
         pass
 
@@ -1561,12 +1615,11 @@ def triage(output):
         pass
     disks, usb_disks = get_disks(True)
     n_nvidia, n_ati, n_vga = detect_video_cards()
-    (ethernet_detected, bad_ethernet_cards) = detect_ethernet()
+    (ethernet_detected, bad_ethernet_cards, eth_devices) = detect_ethernet()
     sound_dev = detect_sound_device()
     triage_result = True
     
     subprocess.call("clear", shell=True)
-    print >> output, ""
     print >> output, "CPU Level: P%d - %dMhz" % (cpu_class, cpu_speed)
     print >> output, "  %s" % (model_name)
     print >> output, "  Cores: %d cores, Bogomips: %s" % (cpu_cores, bogomips)
@@ -1621,23 +1674,22 @@ def triage(output):
             pass
         pass
 
-    print >> output, "Video:"
     if n_nvidia > 0:
-        print >> output, "     nVidia video card = %d" % n_nvidia
+        print >> output, "Video:     nVidia video card = %d" % n_nvidia
         pass
     if n_ati > 0:
-        print >> output, "     ATI video card = %d" % n_ati
+        print >> output, "Video:     ATI video card = %d" % n_ati
         pass
     if n_vga > 0:
-        print >> output, "     Some video card = %d" % n_vga
+        print >> output, "Video:     Some video card = %d" % n_vga
         pass
 
     if (n_nvidia + n_ati + n_vga) <= 0:
         triage_result = False
         pass
 
-    if ethernet_detected:
-        print >> output, "Ethernet card: detected"
+    if len(eth_devices) > 0:
+        print >> output, "Ethernet card: detected. " + " ".join(eth_devices)
     else:
         print >> output, "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
         triage_result = False
@@ -1761,116 +1813,155 @@ def reboot():
 
 def triage_install():
     global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
-    try:
-        import dialog
-        dlg = dialog.Dialog()
-    except:
-        dlg = None
-        pass
+    import dialog
+    dlg = dialog.Dialog()
+    dialog_rc = open(dialog_rc_filename, "w")
+    dialog_rc.write(dialog_rc_failure_template)
+    dialog_rc.close()
+    failure_dlg = dialog.Dialog(DIALOGRC=dialog_rc_filename)
+
     wce_disk_image_path = ["/live/image/wce-disk-images"]
 
     # To save my sanity
-    detect_sensor_modules(None)
-    set_pwm(144)
+    #detect_sensor_modules(None)
+    #set_pwm(144)
 
-    # Make sure dialog works
-    # This also is a way to wait for the network to come up
+    # dialog must work, or else dead.
 
     has_network = None
     if is_network_connected():
-        if dlg:
-            try:
-                dlg.gauge_start("Thank you for triaging. Please fill the form.", title="Checking network")
-                for i in range(0, 19):
-                    dlg.gauge_update(1+i*5, "Thank you for triaging. Please fill the form.", update_text=1)
-                    time.sleep(1)
-                    has_network = get_router_ip_address() != None
-                    if has_network:
-                        break
-                    pass
-                dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
-                time.sleep(1)
-                dlg.gauge_stop()
-            except:
-                dlg = None
-                pass
+        dlg.gauge_start("Thank you for triaging. Please fill the form.", title="Checking network")
+        for i in range(0, 9):
+            dlg.gauge_update(1+i*10, "Thank you for triaging. Please fill the form.", update_text=1)
+            time.sleep(1)
+            has_network = get_router_ip_address() != None
+            if has_network:
+                break
             pass
-        if not dlg:
-            sys.stdout.write( "\nThank you for triaging. Please fill the form.\nChecking network" )
-            sys.stdout.flush()
-            for i in range(0, 20):
-                sys.stdout.write( "." )
-                sys.stdout.flush()
-                time.sleep(1)
-                has_network = get_router_ip_address() != None
-                if has_network:
-                    break
-                pass
-            sys.stdout.write( "\n\n" )
-            sys.stdout.flush()
-            pass
+        dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
+        time.sleep(1)
+        dlg.gauge_stop()
         pass
             
     triage_result = True
 
     while True:
         # I do this extra work so that I can have a temp file.
-        triage_output = open("/tmp/triage.txt", "w")
+        triage_output = open(triage_txt, "w")
         triage_result, disks, usb_disks = triage(triage_output)
         triage_output.close()
         result_displayed = False
 
-        if dlg:
-            btitle = "Triage Output"
-            if not triage_result:
-                btitle = "Triage Output - Failed"
+        btitle = "Triage Output"
+        triage_dlg = dlg
+
+        if not triage_result:
+            btitle = "Triage Output - Failed"
+            triage_dlg = failure_dlg
+            pass
+
+        try:
+            if (not has_network) or (not triage_result):
+                triage_dlg.textbox(triage_txt, width=76, height=19, cr_wrap=1, backtitle=btitle)
                 pass
-            try:
-                if (not has_network) or (not triage_result):
-                    dlg.textbox("/tmp/triage.txt", width=76, height=19, cr_wrap=1, backtitle=btitle)
+            else:
+                triage_output = open(triage_txt)
+                report = triage_output.read()
+                triage_output.close()
+                triage_dlg.infobox(report, width=76, height=19, cr_wrap=1, backtitle=btitle)
+                time.sleep(10)
+                pass
+            result_displayed = True
+        except Exception, e:
+            traceback.print_exc(file.sys.stdout)
+            pass
+
+        # See the disks contain WCE Ubuntu
+        installed_disks = []
+        for d in disks:
+            if not mounted_devices.has_key(d.device_name):
+                if d.has_wce_release():
+                    installed_disks.append(d)
                     pass
-                else:
-                    triage_output = open("/tmp/triage.txt")
-                    report = triage_output.read()
-                    triage_output.close()
-                    dlg.infobox(report, width=76, height=19, cr_wrap=1, backtitle=btitle)
-                    time.sleep(10)
-                    pass
-                result_displayed = True
-            except Exception, e:
                 pass
             pass
 
-        # Backup method to display text
-        if not result_displayed:
-            triage_output = open("/tmp/triage.txt")
-            triage_message = triage_output.read()
+        if len(installed_disks) > 0:
+            triage_output = open(triage_txt, "a+")
+            print >> triage_output, "The machine has the WCE Ubuntu installed in %s." % installed_disks[0].device_name
             triage_output.close()
-            sys.stdout.write(triage_message)
-            sys.stdout.flush()
+
+            # Looks like a disk is already installed.
+            has_network = get_router_ip_address() != None
+            (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
+
+            if has_network:
+                # The startup tried to start the eth0
+                # Since the net is not working, just turn it off for now.
+                subprocess.call("ifdown eth0", shell=True)
+                pass
+
+            while not has_network:
+                has_network = get_router_ip_address() != None
+                if has_network:
+                    break
+                triage_dlg.msgbox("Please connect the NIC to a router/hub and press RETURN")
+                for eth_dev in eth_devices:
+                    subprocess.call("dhclient -1 %s" % eth_dev, shell=True)
+                    pass
+                pass
+
+            triage_output = open(triage_txt, "a+")
+            print >> triage_output, "Network is working."
+            triage_output.close()
+            triage_dlg.textbox(triage_txt, width=76, height=19, cr_wrap=1, backtitle=btitle)
             pass
 
-        # Just in case. One more time would not hurt
         has_network = get_router_ip_address() != None
-        # If no network, just wait for the machine to reboot.
-        if (not has_network) or (not triage_result):
-            print ""
-            yes_no = getpass._raw_input("Reboot (i=Install)? ([Y]/n/i) ")
-            if ((len(yes_no) == 0) or (yes_no[0].lower() == 'y')):
-                reboot()
-                sys.exit(0)
-                pass
-            if (len(yes_no) > 0):
-                what = yes_no[0].lower()
-                if what == 'i':
-                    break
-                pass
-            pass
+        if has_network:
+            triage_dlg.infobox("Contacting the installation server.")
+            disk_images = get_net_disk_images()
         else:
+            disk_images = []
+            pass
+
+        if has_network and len(disk_images) == 0:
+            # If it's connected to a network but no disk images, then
+            # it's probably hooked up to a random router.
+            if len(installed_disks) == 0:
+                triage_dlg.msgbox("Triage is complete.")
+                pass
+            else:
+                triage_dlg.msgbox("Triage is complete.\nIf it passes the triage, it's ready to ship.\n")
+                pass
+            triage_dlg.msgbox("Please turn off the computer.")
+            pass
+        elif (not has_network) and len(disk_images) == 0:
+            # It's an island triage
+            triage_output = open(triage_txt, "a+")
+            if triage_result:
+                print >> triage_output, "Triage complete. Ready to install."
+            else:
+                print >> triage_output, "The machine did not pass the triage. Please fix it." 
+                pass
+            triage_output.close()
+            triage_dlg.textbox(triage_txt, width=76, height=19, cr_wrap=1, backtitle=btitle)
+            pass
+
+        # If there is disk images, it's connected to a server
+        # Proceed to installation
+        if len(disk_images) > 0:
             break
-        pass
+
+        # If it's hooked up to a network, then I'm very done.
+        if has_network:
+            return
+
+        # Just fall through to the installation
+        break
 
     mount_usb_disks(usb_disks)
+
     print ""
 
     try_hook("pre-installation")
@@ -1897,7 +1988,7 @@ def triage_install():
     pass
 
 
-def image_disk():
+def image_disk(args):
     global mounted_devices, mounted_partitions, dlg
     import dialog
     dlg = dialog.Dialog()
@@ -1924,7 +2015,7 @@ def image_disk():
         pass
 
     try:
-        (active_ethernet, bad_cards) = detect_ethernet()
+        (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
         if not active_ethernet:
             print """
 ************************************************************
@@ -2008,7 +2099,7 @@ def image_disk():
 
 
 
-def install_iserver():
+def install_iserver(args):
     global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
     try:
         import dialog
@@ -2075,8 +2166,17 @@ def install_iserver():
     pass
 
 
+def get_boolean_arg(args, name, default_value):
+    if args.has_key(name):
+        return args[name]
+    return default_value
 
-def batch_install(force_installation, generate_host_name, image_file):
+
+def batch_install(args):
+    force_installation = get_boolean_arg(args, "force-installation", False)
+    generate_host_name = get_boolean_arg(args, "generate-host-name", True)
+    image_file = args["image-file"]
+
     global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
     try:
         import dialog
@@ -2101,7 +2201,7 @@ def batch_install(force_installation, generate_host_name, image_file):
     pass
 
 
-def check_installation():
+def check_installation(args):
     disks, usb_disks = get_disks(False)
     disks = disks + usb_disks
     print "Disk count %d" % len(disks)
@@ -2118,6 +2218,9 @@ def check_installation():
         pass
     pass
 
+
+
+
 if __name__ == "__main__":
     try:
         opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation"])
@@ -2127,28 +2230,43 @@ if __name__ == "__main__":
         sys.exit(2)
         pass
 
-    if (len(opts) == 1 and opts[0][0] == "--image-disk"):
-        image_disk()
-        pass
-
-    if (len(opts) >= 1 and opts[0][0] == "--install-iserver"):
-        install_iserver()
-        pass
-
-    if (len(opts) >= 1 and opts[0][0] == "--batch-install"):
-        image_file = opts[0][1]
-        if (not image_file) or (len(image_file) == 0):
-            print "Image file is not specified. You need to give an image file after --batch-install"
-            sys.exit(2)
-            pass
-        batch_install(opts.count(('--force-installation', '')) >= 1, opts.count(('--no-unique-host', '')) >= 1, image_file)
-        pass
-
-    if (len(opts) >= 1 and opts[0][0] == "--check-installation"):
-        check_installation()
-        pass
-
-    if (len(sys.argv) == 1):
+    if len(opts) == 0:
+        # When no option, standard installation
         triage_install()
+        sys.exit(0)
         pass
+
+    cmd = None
+    args = {}
+    for opt, arg in opts:
+        if opt == "--image-disk":
+            cmd = image_disk
+        elif opt == "--install-iserver":
+            cmd = install_iserver
+        elif opt == "--batch-install":
+            cmd = batch_install
+            args["image-file"] = arg
+        elif opt == "--check-installation":
+            cmd = check_installation
+        elif opt == "--force-installation":
+            args["force-installation"] = True
+        elif opt == "--no-unique-host":
+            args["generate-host-name"] = False
+            pass
+        pass
+
+    if cmd == batch_install:
+        image_file = ""
+        try:
+            image_file = args["image-file"]
+        except:
+            pass
+        if len(image_file) == 0:
+            print "Batch install requires a image file specified"
+            sys.exit(2)
+        pass
+
+    cmd(args)
+    pass
+
 

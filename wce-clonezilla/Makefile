@@ -3,8 +3,8 @@
 #
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
-VERSION := $(shell cat version)
-ISOTARGET := wce-clonezilla-v${VERSION}-lite.iso
+WCEVERSION := $(shell cat version)
+ISOTARGET := wce-clonezilla-v${WCEVERSION}-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
 UDF_FLAGS :=
 
@@ -34,6 +34,7 @@ SOURCES := \
  extract-cd/isolinux/isolinux.cfg \
  extract-cd/isolinux/wcebg1.png \
  extract-cd/isolinux/wcebg2.png \
+ extract-cd/isolinux/wceboot.png \
  ${DISKIMAGES}
 
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
@@ -94,14 +95,11 @@ fsimage/etc/network/interfaces: wce/interfaces
 fsimage/etc/resolv.conf: /etc/resolv.conf
 	sudo cp -p $< $@
 
-extract-cd/isolinux/wcebg1.png: wce/wcebg1.png
-	sudo cp $< $@
-
-extract-cd/isolinux/wcebg2.png: wce/wcebg2.png
+extract-cd/isolinux/%.png: wce/%.png
 	sudo cp $< $@
 
 extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg.template version
-	sed s/###VERSION###/${VERSION}/g $< > wce/isolinux.cfg
+	sed s/###VERSION###/${WCEVERSION}/g $< > wce/isolinux.cfg
 	sudo cp wce/isolinux.cfg $@
 	rm -f wce/isolinux.cfg
 
@@ -138,6 +136,8 @@ gpg-key:
 /usr/lib/syslinux:
 	sudo apt-get -y install syslinux
 
+/usr/lib/syslinux/pxelinux.0: /usr/lib/syslinux
+
 /var/lib/tftpboot/wce/live/% : extract-cd/live/%
 	[ -d /var/lib/tftpboot/wce/live/ ] || sudo mkdir -p /var/lib/tftpboot/wce/live
 	sudo cp -p $< $@
@@ -152,7 +152,7 @@ gpg-key:
 /var/lib/tftpboot/pxelinux.cfg:
 	sudo mkdir -p /var/lib/tftpboot/pxelinux.cfg
 
-tftpboot/pxelinux.0: /usr/lib/syslinux
+tftpboot/pxelinux.0: /usr/lib/syslinux/pxelinux.0
 	[ -d tftpboot ] || mkdir tftpboot
 	cp -p /usr/lib/syslinux/pxelinux.0 $@
 
