@@ -10,6 +10,10 @@ except:
     sys.exit(1)
     pass
 
+if not os.path.exists("/sbin/install-mbr"):
+    subprocess.call("sudo apt-get install mbr", shell=True)
+    pass
+
 disk1_re = re.compile(r"Disk /dev/[^:]+:\s+\d+\.{0,1}\d*\s+[KMG]B, (\d+) bytes")
 disk2_re = re.compile(r"\d+ heads, \d+ sectors/track, \d+ cylinders, total (\d+) sectors")
 disk3_re = re.compile(r"Units = sectors of \d+ * \d+ = (\d+) bytes")
