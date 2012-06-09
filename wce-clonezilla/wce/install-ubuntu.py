@@ -4,7 +4,7 @@ import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, sel
 
 installer_version = "0.60"
 
-wce_release_file = '/mnt/disk2/etc/wce-release'
+wce_release_file = '/mnt/wce_install_target/etc/wce-release'
 
 
 fstab_template = '''# /etc/fstab: static file system information.
@@ -66,6 +66,11 @@ form_text_color = (WHITE,CYAN,ON)
 form_item_readonly_color = (CYAN,WHITE,ON)
 '''
 
+
+patch_grub_cfg = '''#
+cp /boot/grub/grub.cfg /tmp/grub.cfg
+sed "s/root='(hd.,1)'/root='(hd0,1)'/g" /tmp/grub.cfg > /boot/grub/grub.cfg
+'''
 
 #
 # SIS 191 gigabit controller 1039:0191 does not work.
@@ -367,17 +372,39 @@ class disk:
         s3.communicate()
         pass
 
+    def get_uuid_from_partitions(self):
+        self.uuid1 = None
+        self.uuid2 = None
+        blkid_re = re.compile(r'/dev/(\w+)1: LABEL="([/\w\.\d]+)" UUID="([\w\d]+-[\w\d]+-[\w\d]+-[\w\d]+-[\w\d]+)" TYPE="([\w\d]+)"')
+        blkid1 = subprocess.Popen(["/sbin/blkid", "%s1" % self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = blkid1.communicate()
+        for line in out.split('\n'):
+            m = blkid_re.match(line)
+            if m:
+                self.uuid1 = m.group(2)
+                break
+            pass
+        blkid5 = subprocess.Popen(["/sbin/blkid", "%s5" % self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = blkid5.communicate()
+        for line in out.split('\n'):
+            m = blkid_re.match(line)
+            if m:
+                self.uuid2 = m.group(2)
+                break
+            pass
+        pass
+        
 
     def mount_disk(self):
         if self.mounted:
             return
 
-        # Mount it to /mnt/disk2
-        if not os.path.exists("/mnt/disk2"):
-            os.mkdir("/mnt/disk2")
+        # Mount it to /mnt/wce_install_target
+        if not os.path.exists("/mnt/wce_install_target"):
+            os.mkdir("/mnt/wce_install_target")
             pass
 
-        s4 = subprocess.Popen(["mount", "%s1" % self.device_name, "/mnt/disk2"])
+        s4 = subprocess.Popen(["mount", "%s1" % self.device_name, "/mnt/wce_install_target"])
         s4.communicate()
 
         self.mounted = True
@@ -392,7 +419,7 @@ class disk:
 
         self.mount_disk()
 
-        os.chdir("/mnt/disk2")
+        os.chdir("/mnt/wce_install_target")
 
         # Restore ubuntu 
         print "restore -- this takes about 10-20 minutes"
@@ -496,7 +523,7 @@ class disk:
         print "Swap    %s5 - UUID: %s" % (self.device_name, self.uuid2)
         
         # patch up the restore
-        fstab = open("/mnt/disk2/etc/fstab", "w")
+        fstab = open("/mnt/wce_install_target/etc/fstab", "w")
         fstab.write(fstab_template % (self.uuid1, self.uuid2))
         fstab.close()
 
@@ -505,15 +532,15 @@ class disk:
         #
         if newhostname:
             # Set up the /etc/hostname
-            hostname_file = open("/mnt/disk2/etc/hostname", "w")
+            hostname_file = open("/mnt/wce_install_target/etc/hostname", "w")
             hostname_file.write("%s\n" % newhostname)
             hostname_file.close()
 
             # Set up the /etc/hosts file
-            hosts = open("/mnt/disk2/etc/hosts", "r")
+            hosts = open("/mnt/wce_install_target/etc/hosts", "r")
             lines = hosts.readlines()
             hosts.close()
-            hosts = open("/mnt/disk2/etc/hosts", "w")
+            hosts = open("/mnt/wce_install_target/etc/hosts", "w")
 
             this_host = re.compile(r"127\.0\.1\.1\s+[a-z_A-Z0-9]+\n")
             for line in lines:
@@ -530,18 +557,18 @@ class disk:
         #
         # Remove the persistent rules
         # 
-        retcode = subprocess.call("rm -f /mnt/disk2/etc/udev/rules.d/70-persistent*", shell=True)
+        retcode = subprocess.call("rm -f /mnt/wce_install_target/etc/udev/rules.d/70-persistent*", shell=True)
 
         #
         # Remove the WCE follow up files
         # 
-        retcode = subprocess.call("rm -f /mnt/disk2/var/lib/world-computer-exchange/computer-uuid", shell=True)
-        retcode = subprocess.call("rm -f /mnt/disk2/var/lib/world-computer-exchange/access-timestamp", shell=True)
+        retcode = subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/computer-uuid", shell=True)
+        retcode = subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/access-timestamp", shell=True)
 
         # It needs to do a few things before chroot
         # Try copy the /etc/resolve.conf
         try:
-            shutil.copy2("/etc/resolv.conf", "/mnt/disk2/etc/resolv.conf")
+            shutil.copy2("/etc/resolv.conf", "/mnt/wce_install_target/etc/resolv.conf")
         except:
             # Not a big deal if it does not exist
             pass
@@ -583,7 +610,7 @@ class disk:
 
         self.mount_disk()
 
-        subprocess.call("rm -f /mnt/disk2/var/lib/world-computer-exchange/access-timestamp /mnt/disk2/var/lib/world-computer-exchange/computer-uuid /mnt/disk2/etc/udev/rules.d/70-persistent-cd.rules /mnt/disk2/etc/udev/rules.d/70-persistent-net.rules", shell=True)
+        subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/access-timestamp /mnt/wce_install_target/var/lib/world-computer-exchange/computer-uuid /mnt/wce_install_target/etc/udev/rules.d/70-persistent-cd.rules /mnt/wce_install_target/etc/udev/rules.d/70-persistent-net.rules", shell=True)
 
         self.unmount_disk()
 
@@ -602,7 +629,7 @@ class disk:
         for i in range(0, 30):
             retcode = subprocess.call("sync", shell=True)
             time.sleep(0.5)
-            retcode = subprocess.call("umount  /mnt/disk2", shell=True)
+            retcode = subprocess.call("umount  /mnt/wce_install_target", shell=True)
             if retcode == 0:
                 self.mounted = False
                 return
@@ -688,11 +715,11 @@ class optical_drive:
 def chroot_and_exec(things_to_do, root_partition_uuid, grub_cfg_patch):
     print "chroot and execute"
     try:
-        subprocess.call("mount --bind /dev/ /mnt/disk2/dev", shell=True)
+        subprocess.call("mount --bind /dev/ /mnt/wce_install_target/dev", shell=True)
     except:
         pass
 
-    install_script = open("/mnt/disk2/tmp/install-grub", "w")
+    install_script = open("/mnt/wce_install_target/tmp/install-grub", "w")
     install_script.write("""#!/bin/sh
 echo "Here we go!"
 mount -t proc none /proc
@@ -723,8 +750,8 @@ umount /dev/pts
 
     install_script.close()
     
-    subprocess.call("chmod +x /mnt/disk2/tmp/install-grub", shell=True)
-    chroot = subprocess.Popen(["/usr/sbin/chroot", "/mnt/disk2", "/bin/sh", "/tmp/install-grub"], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    subprocess.call("chmod +x /mnt/wce_install_target/tmp/install-grub", shell=True)
+    chroot = subprocess.Popen(["/usr/sbin/chroot", "/mnt/wce_install_target", "/bin/sh", "/tmp/install-grub"], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     (out, err) = chroot.communicate()
     if chroot.returncode == 0:
         print "grub installation complete."
@@ -732,7 +759,7 @@ umount /dev/pts
         print out
         print err
         pass
-    subprocess.call("umount /mnt/disk2/dev", shell=True)
+    subprocess.call("umount /mnt/wce_install_target/dev", shell=True)
     pass
 
 
@@ -2195,11 +2222,6 @@ def batch_install(args):
         sys.exit(1)
         pass
 
-    patch_grub_cfg = '''#
-cp /boot/grub/grub.cfg /tmp/grub.cfg
-sed "s/root='(hd.,1)'/root='(hd0,1)'/g" /tmp/grub.cfg > /boot/grub/grub.cfg
-'''
-
     try:
         main(force_installation, generate_host_name, image_file, 2048, True, patch_grub_cfg)
         pass
@@ -2233,11 +2255,81 @@ def check_installation(args):
     pass
 
 
+def update_grub(args):
+    disks, usb_disks = get_disks(False)
+    disks = disks + usb_disks
+    print "Disk count %d" % len(disks)
+
+    targets = []
+    index = 1
+    n_wce_ubuntu_disk = 0
+    first_target = None
+    skipped = 0
+    print "Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
+    print "Detected disks"
+    wce_ubuntu_disks = []
+    for d in disks:
+        if mounted_devices.has_key(d.device_name):
+            print "%3d : %s  - mounted %s" % (index, d.device_name, mounted_devices[d.device_name])
+        else:
+            if d.has_wce_release():
+                print "%3d : %s" % (index, d.device_name)
+                n_wce_ubuntu_disk = n_wce_ubuntu_disk + 1
+                wce_ubuntu_disks.append(d)
+                if n_wce_ubuntu_disk == 1:
+                    first_target = index - 1
+                    pass
+                pass
+            else:
+                print "%3d : %s - Not WCE Ubuntu disk" % (index, d.device_name)
+                pass
+            pass
+        index += 1
+        pass
+
+    if len(wce_ubuntu_disks) > 1:
+        print " NOTE: Mounted disks cannot be the installation target."
+
+        selection = getpass._raw_input("  space separated: ")
+        for which in selection.split(" "):
+            try:
+                index = string.atoi(which) - 1
+                if not wce_ubuntu_disks[index].mounted:
+                    targets.append(wce_ubuntu_disks[index])
+                else:
+                    print "%s is mounted and cannot be the target." % disks[index].device_name
+                    pass
+            except Exception, e:
+                print "Bad input for picking disk"
+                raise e
+                pass
+            pass
+        pass
+    elif len(wce_ubuntu_disks) == 1:
+        targets.append(wce_ubuntu_disks[0])
+        pass
+
+    if len(targets) > 0:
+        for target in targets:
+            target.get_uuid_from_partitions()
+            if target.uuid1:
+                target.mount_disk()
+                target.finalize_disk(False, patch_grub_cfg)
+                target.unmount_disk()
+                pass
+            else:
+                print "%s1 does not have UUID. Update grub skipped." % target.device_name
+                pass
+            pass
+        pass
+    print "Update grub done."
+    pass
+
 
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -2267,6 +2359,9 @@ if __name__ == "__main__":
         elif opt == "--no-unique-host":
             args["generate-host-name"] = False
             pass
+        elif opt == "--update-grub":
+            cmd = update_grub
+            pass
         pass
 
     if cmd == batch_install:
@@ -2281,6 +2376,7 @@ if __name__ == "__main__":
         pass
 
     cmd(args)
+    sys.exit(0)
     pass
 
 
