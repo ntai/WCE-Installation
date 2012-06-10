@@ -607,18 +607,49 @@ class disk:
     def image_disk(self, stem_name):
         if  not os.path.exists("/mnt/www/wce-disk-images"):
             return
+        self.imagename = "/mnt/www/wce-disk-images/%s-%s.partclone.gz" % (stem_name, datetime.date.today().isoformat())
+        self.create_image()
+        pass
+
+
+    def create_image(self):
+        if self.imagename == None:
+            print "Image file name is not specified for create image. Bailing out."
+            sys.exit(2)
+            pass
+
+        ext = ""
+        try:
+            ext = os.path.splitext(self.imagename)[1]
+        except:
+            pass
+        if ext == ".7z":
+            comp = "p7zip"
+        elif ext == ".gz":
+            comp = "pigz -9"
+        elif ext == ".xz":
+            comp = "xz --stdout"
+        elif ext == ".partclone":
+            # aka no compression
+            comp = "cat"
+        elif ext == ".lzo":
+            comp = "lzop -c"
+        else:
+            comp = "cat"
+            pass
 
         self.mount_disk()
-
         subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/access-timestamp /mnt/wce_install_target/var/lib/world-computer-exchange/computer-uuid /mnt/wce_install_target/etc/udev/rules.d/70-persistent-cd.rules /mnt/wce_install_target/etc/udev/rules.d/70-persistent-net.rules", shell=True)
 
         self.unmount_disk()
 
-        self.imagename = "%s-%s.partclone.gz" % (stem_name, datetime.date.today().isoformat())
-
         subprocess.call("/sbin/e2fsck -f -y %s1" % self.device_name, shell=True)
         subprocess.call("/sbin/resize2fs -M %s1" % self.device_name, shell=True)
-        subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o - | pigz -9 > /mnt/www/wce-disk-images/%s" % (self.device_name, self.imagename), shell=True)
+        if comp == "cat":
+            subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o %s" % (self.device_name, self.imagename), shell=True)
+        else:
+            subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o - | %s > %s" % (self.device_name, comp, self.imagename), shell=True)
+            pass
         subprocess.call("/sbin/resize2fs %s1" % self.device_name, shell=True)
         pass
 
@@ -1422,12 +1453,11 @@ def main(force_installation, generate_hostname, disk_image_file, memory_size, in
     if disk_image_file == None:
         disk_images = get_net_disk_images() + get_live_disk_images()
         if len(disk_images) <= 0:
-            dlg.msgbox("""
-There is no disk image on this media or network.
-It means either the network is not connected, the server
-is not working, or the server does not have "wce-disk-image.txt"
-file in the HTTP server document directory.
-Talk to the admin of installation server.""",
+            dlg.msgbox("""There is no disk image on this media or network.
+It means either the network is not connected, the installation 
+server is not working, or the installation server does not have
+the WCE Ubuntu files in the HTTP server document directory.
+Talk to the admin of installation server if you are installing.""",
                        width=70, height=10)
             raise Exception("No disk images")
         pass
@@ -1905,7 +1935,7 @@ def triage_install():
                 report = triage_output.read()
                 triage_output.close()
                 triage_dlg.infobox(report, width=76, height=19, cr_wrap=1, backtitle=btitle)
-                time.sleep(10)
+                time.sleep(5)
                 pass
             result_displayed = True
         except Exception, e:
@@ -1926,6 +1956,20 @@ def triage_install():
             triage_output = open(triage_txt, "a+")
             print >> triage_output, "The machine has the WCE Ubuntu installed in %s." % installed_disks[0].device_name
             triage_output.close()
+
+            # Ask whether or not to do the update-grub
+            yesno = triage_dlg.yesno("The disk contains the WCE Ubuntu installed.\nDo you want to rerun the disk finalize? (recommended)", 7, 70)
+            if yesno == 0:
+                for target in installed_disks:
+                    target.get_uuid_from_partitions()
+                    if target.uuid1:
+                        target.mount_disk()
+                        target.finalize_disk(False, None)
+                        target.unmount_disk()
+                        pass
+                    pass
+                print "Disk finalized."
+                pass
 
             # Looks like a disk is already installed.
             has_network = get_router_ip_address() != None
@@ -2274,7 +2318,7 @@ def check_installation(args):
     pass
 
 
-def update_grub(args):
+def finalize_wce_disk(args):
     wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
 
     while True:
@@ -2344,10 +2388,10 @@ def update_grub(args):
                     target.unmount_disk()
                     pass
                 else:
-                    print "%s1 does not have UUID. Update grub skipped." % target.device_name
+                    print "%s1 does not have UUID. Disk finalization skipped." % target.device_name
                     pass
                 pass
-            print "Update grub done."
+            print "Disk finalization complete."
             pass
 
         if not wait_for_disk:
@@ -2356,10 +2400,49 @@ def update_grub(args):
     pass
 
 
+def create_install_image(args):
+    wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
+    image_file = args["image-file"]
+
+    disks, usb_disks = get_disks(False)
+    disks = disks + usb_disks
+    sources = []
+    print "Disk count %d" % len(disks)
+    for disk in disks:
+        print "Disk %s" % (disk.device_name)
+        if disk.has_wce_release():
+            sources.append(disk)
+            print "  WCE Ubuntu installed."
+        else:
+            print "  WCE Ubuntu NOT installed."
+            pass
+        pass
+
+    if len(sources) == 0:
+        print "Did not find any WCE Ubuntu disks."
+        pass
+    elif len(sources) > 1:
+        index = 1
+        skipped = 0
+        for disk in sources:
+            print "%3d : %s" % (index, disk.device_name)
+            index += 1
+            pass
+        selection = getpass._raw_input("  Choose one: ")
+        index = string.atoi(selection) - 1
+        sources = [sources[index]]
+        pass
+ 
+    source = sources[0]
+    source.imagename = image_file
+    source.create_image()
+    pass
+
+
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image="])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -2392,9 +2475,14 @@ if __name__ == "__main__":
         elif opt == "--wait-for-disk":
             args["wait-for-disk"] = True
             pass
-        elif opt == "--update-grub":
-            cmd = update_grub
+        elif opt == "--update-grub" or opt == "--finalize-disk":
+            cmd = finalize_wce_disk
             pass
+        elif opt == "--create-install-image":
+            cmd = create_install_image
+            args["image-file"] = arg
+            pass
+
         pass
 
     if cmd == batch_install:
@@ -2405,6 +2493,16 @@ if __name__ == "__main__":
             pass
         if len(image_file) == 0:
             print "Batch install requires a image file specified"
+            sys.exit(2)
+        pass
+    elif cmd == create_install_image:
+        image_file = ""
+        try:
+            image_file = args["image-file"]
+        except:
+            pass
+        if len(image_file) == 0:
+            print "Create install install requires a image file specified."
             sys.exit(2)
         pass
 

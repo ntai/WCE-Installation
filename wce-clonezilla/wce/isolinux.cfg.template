@@ -29,7 +29,7 @@ MENU TITLE WCE -  clonezilla.org, clonezilla.nchc.org.tw
 label WCE Ubuntu installation
   MENU DEFAULT
   # MENU HIDE
-  MENU LABEL WCE Ubuntu clone installation
+  MENU LABEL WCE Triage/Ubuntu installation
   # MENU PASSWD
   kernel /live/vmlinuz
   append initrd=/live/initrd.img boot=live hostname=wceinst config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal ip=frommedia acpi_enforce_resources=lax nosplash 
@@ -44,7 +44,7 @@ label WCE Ubuntu installation
 label Ubuntu installation 800x600
   # MENU DEFAULT
   # MENU HIDE
-  MENU LABEL Ubuntu installation (VGA 800x600)
+  MENU LABEL WCE Triage/Ubuntu installation (VGA 800x600)
   # MENU PASSWD
   kernel /live/vmlinuz
   append initrd=/live/initrd.img boot=live hostname=maverick config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" video=uvesafb:mode_option=800x600-16 ip=frommedia acpi_enforce_resources=lax nosplash
