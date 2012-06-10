@@ -2208,32 +2208,51 @@ def get_boolean_arg(args, name, default_value):
     return default_value
 
 
+def wait_for_disk_insertion():
+    current_disks = find_disk_device_files("/dev/hd") + find_disk_device_files("/dev/sd")
+    while True:
+        time.sleep(2)
+        new_disks = find_disk_device_files("/dev/hd") + find_disk_device_files("/dev/sd")
+        if len(current_disks) < len(new_disks):
+            break
+        if len(current_disks) > len(new_disks):
+            print "Disk disappeared"
+            pass
+        current_disks = new_disks
+        pass
+    pass
+
+
 def batch_install(args):
     force_installation = get_boolean_arg(args, "force-installation", False)
     generate_host_name = get_boolean_arg(args, "generate-host-name", True)
+    wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
     image_file = args["image-file"]
 
-    global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
-    try:
-        import dialog
-        dlg = dialog.Dialog()
-    except:
-        print "Please install Python dialog."
-        sys.exit(1)
-        pass
+    while True:
+        if wait_for_disk:
+            print "Waiting for disk to appear."
+            wait_for_disk_insertion()
+            pass
 
-    try:
-        main(force_installation, generate_host_name, image_file, 2048, True, patch_grub_cfg)
+        try:
+            main(force_installation, generate_host_name, image_file, 2048, True, patch_grub_cfg)
+            print "Installation complete."
+            print ""
+            pass
+        except (KeyboardInterrupt, SystemExit), e:
+            print "Installation interrupted."
+            raise e
+        except Exception, e:
+            print "Installation interrupted."
+            print str(e)
+            raise e
+
+        if not wait_for_disk:
+            break
+
         pass
-    except (KeyboardInterrupt, SystemExit), e:
-        print "Installation interrupted."
-        raise e
-        pass
-    except Exception, e:
-        print "Installation interrupted."
-        print str(e)
-        raise e
-        pass
+    
     pass
 
 
@@ -2256,80 +2275,91 @@ def check_installation(args):
 
 
 def update_grub(args):
-    disks, usb_disks = get_disks(False)
-    disks = disks + usb_disks
-    print "Disk count %d" % len(disks)
+    wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
 
-    targets = []
-    index = 1
-    n_wce_ubuntu_disk = 0
-    first_target = None
-    skipped = 0
-    print "Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
-    print "Detected disks"
-    wce_ubuntu_disks = []
-    for d in disks:
-        if mounted_devices.has_key(d.device_name):
-            print "%3d : %s  - mounted %s" % (index, d.device_name, mounted_devices[d.device_name])
-        else:
-            if d.has_wce_release():
-                print "%3d : %s" % (index, d.device_name)
-                n_wce_ubuntu_disk = n_wce_ubuntu_disk + 1
-                wce_ubuntu_disks.append(d)
-                if n_wce_ubuntu_disk == 1:
-                    first_target = index - 1
-                    pass
-                pass
-            else:
-                print "%3d : %s - Not WCE Ubuntu disk" % (index, d.device_name)
-                pass
+    while True:
+        if wait_for_disk:
+            print "Waiting for disk to appear"
+            wait_for_disk_insertion()
             pass
-        index += 1
-        pass
 
-    if len(wce_ubuntu_disks) > 1:
-        print " NOTE: Mounted disks cannot be the installation target."
+        disks, usb_disks = get_disks(False)
+        disks = disks + usb_disks
+        print "Disk count %d" % len(disks)
 
-        selection = getpass._raw_input("  space separated: ")
-        for which in selection.split(" "):
-            try:
-                index = string.atoi(which) - 1
-                if not wce_ubuntu_disks[index].mounted:
-                    targets.append(wce_ubuntu_disks[index])
+        targets = []
+        index = 1
+        n_wce_ubuntu_disk = 0
+        first_target = None
+        skipped = 0
+        print "Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
+        print "Detected disks"
+        wce_ubuntu_disks = []
+        for d in disks:
+            if mounted_devices.has_key(d.device_name):
+                print "%3d : %s  - mounted %s" % (index, d.device_name, mounted_devices[d.device_name])
+            else:
+                if d.has_wce_release():
+                    print "%3d : %s" % (index, d.device_name)
+                    n_wce_ubuntu_disk = n_wce_ubuntu_disk + 1
+                    wce_ubuntu_disks.append(d)
+                    if n_wce_ubuntu_disk == 1:
+                        first_target = index - 1
+                        pass
+                    pass
                 else:
-                    print "%s is mounted and cannot be the target." % disks[index].device_name
+                    print "%3d : %s - Not WCE Ubuntu disk" % (index, d.device_name)
                     pass
-            except Exception, e:
-                print "Bad input for picking disk"
-                raise e
                 pass
+            index += 1
             pass
-        pass
-    elif len(wce_ubuntu_disks) == 1:
-        targets.append(wce_ubuntu_disks[0])
-        pass
+        
+        if len(wce_ubuntu_disks) > 1:
+            print " NOTE: Mounted disks cannot be the installation target."
 
-    if len(targets) > 0:
-        for target in targets:
-            target.get_uuid_from_partitions()
-            if target.uuid1:
-                target.mount_disk()
-                target.finalize_disk(False, patch_grub_cfg)
-                target.unmount_disk()
-                pass
-            else:
-                print "%s1 does not have UUID. Update grub skipped." % target.device_name
+            selection = getpass._raw_input("  space separated: ")
+            for which in selection.split(" "):
+                try:
+                    index = string.atoi(which) - 1
+                    if not wce_ubuntu_disks[index].mounted:
+                        targets.append(wce_ubuntu_disks[index])
+                    else:
+                        print "%s is mounted and cannot be the target." % disks[index].device_name
+                        pass
+                except Exception, e:
+                    print "Bad input for picking disk"
+                    raise e
                 pass
             pass
+        elif len(wce_ubuntu_disks) == 1:
+            targets.append(wce_ubuntu_disks[0])
+            pass
+
+        if len(targets) > 0:
+            for target in targets:
+                target.get_uuid_from_partitions()
+                if target.uuid1:
+                    target.mount_disk()
+                    target.finalize_disk(False, patch_grub_cfg)
+                    target.unmount_disk()
+                    pass
+                else:
+                    print "%s1 does not have UUID. Update grub skipped." % target.device_name
+                    pass
+                pass
+            print "Update grub done."
+            pass
+
+        if not wait_for_disk:
+            break
         pass
-    print "Update grub done."
     pass
 
 
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -2358,6 +2388,9 @@ if __name__ == "__main__":
             args["force-installation"] = True
         elif opt == "--no-unique-host":
             args["generate-host-name"] = False
+            pass
+        elif opt == "--wait-for-disk":
+            args["wait-for-disk"] = True
             pass
         elif opt == "--update-grub":
             cmd = update_grub
