@@ -280,7 +280,26 @@ class disk:
         self.mount_disk()
         self.finalize_disk(newhostname, grub_cfg_patch)
         self.create_wce_tag(self.partclone_image)
-        self.unmount_disk()
+        pass
+
+
+    def post_install(self, remote_hook_name, hook_file, addition_dir, addition_tar):
+        if remote_hook_name:
+            try_hook(remote_hook_name, do_exec=False)
+            pass
+        if hook_file:
+            run_hook_file(hook_file, do_exec=False)
+            pass
+        if addition_dir:
+            print "Copying additional contents from directory %s" % addition_dir
+            subprocess.call("cp -prvP %s -t /mnt/wce_install_target" % addition_dir, shell=True)
+            print "Additional contents copied."
+            pass
+        if addition_tar:
+            print "Expanding additional tar file %s" % addition_tar
+            subprocess.call("tar -xv --directory /mnt/wce_install_target -f %s " % addition_tar, shell=True)
+            print "Additional contents copied."
+            pass
         pass
 
 
@@ -598,7 +617,6 @@ class disk:
         release = open(wce_release_file, "a+")
         print >> release, "wce-contents: %s" % get_filename_stem(image_file_name)
         print >> release, "installer-version: %s" % installer_version
-        print >> release, "installation-uuid: %s" % uuidgen()
         print >> release, "installation-date: %s" % datetime.datetime.isoformat( datetime.datetime.utcnow() )
         release.close()
         pass
@@ -1400,12 +1418,16 @@ def detect_sound_device():
     return detected
 
 
-def try_hook(hook_name):
+def try_hook(remote_hook_name, do_exec=True):
+    # If hook does not exist, just bail out without complaint
+    if remote_hook_name == None:
+        return
+
     urls = []
     router_ip_address = get_router_ip_address()
     if router_ip_address:
-        urls.append("http://%s/%s.py" % (router_ip_address, hook_name))
-        urls.append("http://%s/%s.sh" % (router_ip_address, hook_name))
+        urls.append("http://%s/%s.py" % (router_ip_address, remote_hook_name))
+        urls.append("http://%s/%s.sh" % (router_ip_address, remote_hook_name))
         pass
 
     for url in urls:
@@ -1420,12 +1442,7 @@ def try_hook(hook_name):
                 tmpfile.write(out)
                 tmpfile.close()
                 os.chmod(tmpfilepath, 0755)
-                file_ext = os.path.splitext(basename)[1]
-                if file_ext == ".py":
-                    os.execvp("python", ["python", tmpfilepath])
-                elif file_ext == ".sh":
-                    os.execvp("sh", ["sh", tmpfilepath])
-                    pass
+                run_hook_file(tmpfilepath, do_exec=do_exec)
                 pass
             pass
         except Exception, e:
@@ -1434,8 +1451,34 @@ def try_hook(hook_name):
     return
 
 
+def run_hook_file(hook_file, do_exec=True):
+    file_ext = os.path.splitext(hook_file)[1]
+    if do_exec:
+        if file_ext == ".py":
+            os.execvp("python", ["python", tmpfilepath])
+        elif file_ext == ".sh":
+            os.execvp("sh", ["sh", tmpfilepath])
+            pass
+        pass
+    else:
+        sub = None
+        if file_ext == ".py":
+            sub = subprocess.Popen(["python", tmpfilepath])
+        elif file_ext == ".sh":
+            sub = subprocess.Popen(["bash", tmpfilepath])
+            pass
+        if sub:
+            sub.communicate()
+            pass
+        pass
+    pass
+
+
+
 # force_installation: True - install new contents even if it already has WCE release
-def main(force_installation, generate_hostname, disk_image_file, memory_size, include_usb_disks, grub_cfg_patch):
+def main(force_installation=False, generate_hostname=False, disk_image_file=None,
+         memory_size=None, include_usb_disks=False, grub_cfg_patch=None,
+         remote_hook_name=None, hook_file=None, addition_dir=None, addition_tar=None):
     global mounted_devices, disk_images, dlg
 
     (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
@@ -1549,6 +1592,8 @@ Talk to the admin of installation server if you are installing.""",
 
             if force_installation or (not target.has_wce_release()):
                 target.install_ubuntu(memsize, newhostname, grub_cfg_patch)
+                target.post_install(remote_hook_name, hook_file, addition_dir, addition_tar)
+                target.unmount_disk()
             else:
                 print ""
                 print "Installation to %s is skipped since it appears the disk already has a WCE Ubuntu." % target.device_name
@@ -2046,13 +2091,12 @@ def triage_install():
 
     try_hook("pre-installation")
     try:
-        main(True, True, None, None, False, None)
+        main(force_installation=True, generate_hostname=True, remote_hook_name="post-installation")
         print ""
         print "**********************"
         print "Installation complete."
         print "**********************"
         print ""
-        try_hook("post-installation")
         reboot()
         pass
     except (KeyboardInterrupt, SystemExit), e:
@@ -2224,13 +2268,12 @@ def install_iserver(args):
 
     try_hook("iserver-pre-installation")
     try:
-        main(True, False, None, None, False, None)
+        main(force_installation=True, remote_hook_name="iserver-post-installation")
         print ""
         print "*********************************************"
         print "Installation of Installation server complete."
         print "*********************************************"
         print ""
-        try_hook("iserver-post-installation")
         reboot()
         pass
     except (KeyboardInterrupt, SystemExit), e:
@@ -2246,10 +2289,11 @@ def install_iserver(args):
     pass
 
 
-def get_boolean_arg(args, name, default_value):
+def safe_get_arg(args, name, default_value):
     if args.has_key(name):
         return args[name]
     return default_value
+
 
 
 def wait_for_disk_insertion():
@@ -2268,10 +2312,7 @@ def wait_for_disk_insertion():
 
 
 def batch_install(args):
-    force_installation = get_boolean_arg(args, "force-installation", False)
-    generate_host_name = get_boolean_arg(args, "generate-host-name", True)
-    wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
-    image_file = args["image-file"]
+    wait_for_disk = safe_get_arg(args, "wait-for-disk", False)
 
     while True:
         if wait_for_disk:
@@ -2280,7 +2321,14 @@ def batch_install(args):
             pass
 
         try:
-            main(force_installation, generate_host_name, image_file, 2048, True, patch_grub_cfg)
+            main(force_installation=safe_get_arg(args, "force-installation", False),
+                 generate_hostname=safe_get_arg(args, "generate-host-name", True),
+                 disk_image_file=args["image-file"],
+                 memory_size=1024,
+                 include_usb_disks=True,
+                 grub_cfg_patch=patch_grub_cfg,
+                 addition_dir=safe_get_arg(args, "addition-dir", None),
+                 addition_tar=safe_get_arg(args, "addition-tar", None))
             print "Installation complete."
             print ""
             pass
@@ -2319,7 +2367,7 @@ def check_installation(args):
 
 
 def finalize_wce_disk(args):
-    wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
+    wait_for_disk = safe_get_arg(args, "wait-for-disk", False)
 
     while True:
         if wait_for_disk:
@@ -2385,6 +2433,9 @@ def finalize_wce_disk(args):
                 if target.uuid1:
                     target.mount_disk()
                     target.finalize_disk(False, patch_grub_cfg)
+                    target.post_install(None, None,
+                                        addition_dir=safe_get_arg(args, "addition-dir", None),
+                                        addition_tar=safe_get_arg(args, "addition-tar", None))
                     target.unmount_disk()
                     pass
                 else:
@@ -2401,7 +2452,7 @@ def finalize_wce_disk(args):
 
 
 def create_install_image(args):
-    wait_for_disk = get_boolean_arg(args, "wait-for-disk", False)
+    wait_for_disk = safe_get_arg(args, "wait-for-disk", False)
     image_file = args["image-file"]
 
     disks, usb_disks = get_disks(False)
@@ -2442,7 +2493,7 @@ def create_install_image(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image="])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar="])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -2482,7 +2533,15 @@ if __name__ == "__main__":
             cmd = create_install_image
             args["image-file"] = arg
             pass
-
+        elif opt == "--addition":
+            args["addition"] = arg
+            pass
+        elif opt == "--addition-dir":
+            args["addition-dir"] = arg
+            pass
+        elif opt == "--addition-tar":
+            args["addition-tar"] = arg
+            pass
         pass
 
     if cmd == batch_install:
