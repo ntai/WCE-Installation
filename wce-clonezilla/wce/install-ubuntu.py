@@ -121,6 +121,12 @@ Section "Screen"
 EndSection
 '''
 
+dhclient_conf = '''
+timeout 5;
+retry 0;
+initial-interval 1;
+'''
+
 lspci_nm_re = re.compile(r'\s*([0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f])\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"')
 
 disk_images = []
@@ -699,14 +705,14 @@ class disk:
                         pass
                     pass
                 except:
-                    traceback.print_exc(file.sys.stdout)
+                    traceback.print_exc(sys.stdout)
                     pass
 
                 try:
                     self.unmount_disk()
                     time.sleep(2)
                 except:
-                    traceback.print_exc(file.sys.stdout)
+                    traceback.print_exc(sys.stdout)
                     pass
                 break
             pass
@@ -1102,7 +1108,7 @@ def get_disks(list_mounted_disks):
                 pass
             pass
         except:
-            traceback.print_exc(file.sys.stdout)
+            traceback.print_exc(sys.stdout)
             pass
 
         if not is_disk:
@@ -1436,6 +1442,7 @@ def try_hook(remote_hook_name, do_exec=True):
             wget = subprocess.Popen("wget -q -O - -T 2 --dns-timeout=2 %s" % url, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             (out, err) = wget.communicate()
             if wget.returncode == 0:
+                print "Running %s..." % url
                 basename = os.path.basename(url)
                 tmpfilepath = "/var/tmp/%s" % basename
                 tmpfile = open(tmpfilepath, "w")
@@ -1446,6 +1453,8 @@ def try_hook(remote_hook_name, do_exec=True):
                 pass
             pass
         except Exception, e:
+            print "Exception while trying to run a hook."
+            traceback.print_exc(sys.stdout)
             pass
         pass
     return
@@ -1455,17 +1464,17 @@ def run_hook_file(hook_file, do_exec=True):
     file_ext = os.path.splitext(hook_file)[1]
     if do_exec:
         if file_ext == ".py":
-            os.execvp("python", ["python", tmpfilepath])
+            os.execvp("python", ["python", hook_file])
         elif file_ext == ".sh":
-            os.execvp("sh", ["sh", tmpfilepath])
+            os.execvp("sh", ["sh", hook_file])
             pass
         pass
     else:
         sub = None
         if file_ext == ".py":
-            sub = subprocess.Popen(["python", tmpfilepath])
+            sub = subprocess.Popen("python %s" % hook_file, shell=True)
         elif file_ext == ".sh":
-            sub = subprocess.Popen(["bash", tmpfilepath])
+            sub = subprocess.Popen(hook_file, shell=True)
             pass
         if sub:
             sub.communicate()
@@ -1791,16 +1800,14 @@ def triage(output):
         print >> output, "Video:     ATI video card = %d" % n_ati
         pass
     if n_vga > 0:
-        print >> output, "Video:     Some video card = %d" % n_vga
+        print >> output, "Video:     Video card = %d" % n_vga
         pass
 
     if (n_nvidia + n_ati + n_vga) <= 0:
         triage_result = False
         pass
 
-    if len(eth_devices) > 0:
-        print >> output, "Ethernet card: detected. " + " ".join(eth_devices)
-    else:
+    if not len(eth_devices) > 0:
         print >> output, "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
         triage_result = False
         pass
@@ -1811,9 +1818,7 @@ def triage(output):
             pass
         pass
 
-    if sound_dev:
-        print >> output, "Sound card: detected"
-    else:
+    if not sound_dev:
         print >> output, "Sound card: NOT DETECTED -- INSTALL SOUND CARD"
         triage_result = False
         pass
@@ -1973,18 +1978,18 @@ def triage_install():
 
         try:
             if (not has_network) or (not triage_result):
-                triage_dlg.textbox(triage_txt, width=76, height=19, cr_wrap=1, backtitle=btitle)
+                triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
                 pass
             else:
                 triage_output = open(triage_txt)
                 report = triage_output.read()
                 triage_output.close()
-                triage_dlg.infobox(report, width=76, height=19, cr_wrap=1, backtitle=btitle)
+                triage_dlg.infobox(report, width=76, height=20, cr_wrap=1, backtitle=btitle)
                 time.sleep(5)
                 pass
             result_displayed = True
         except Exception, e:
-            traceback.print_exc(file.sys.stdout)
+            traceback.print_exc(sys.stdout)
             pass
 
         # See the disks contain WCE Ubuntu
@@ -2022,9 +2027,13 @@ def triage_install():
 
             if has_network:
                 # The startup tried to start the eth0
-                # Since the net is not working, just turn it off for now.
                 subprocess.call("ifdown eth0", shell=True)
+                has_network = False
                 pass
+
+            file = open("/tmp/dhclient.conf", "w")
+            file.write(dhclient_conf)
+            file.close()
 
             while not has_network:
                 has_network = get_router_ip_address() != None
@@ -2032,14 +2041,17 @@ def triage_install():
                     break
                 triage_dlg.msgbox("Please connect the NIC to a router/hub and press RETURN")
                 for eth_dev in eth_devices:
-                    subprocess.call("dhclient -1 %s" % eth_dev, shell=True)
+                    subprocess.call("dhclient -cf /tmp/dhclient.conf -1 %s" % eth_dev, shell=True)
+                    has_network = get_router_ip_address() != None
+                    if has_network:
+                        break
                     pass
                 pass
 
             triage_output = open(triage_txt, "a+")
             print >> triage_output, "Network is working."
             triage_output.close()
-            triage_dlg.textbox(triage_txt, width=76, height=19, cr_wrap=1, backtitle=btitle)
+            triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
             pass
 
         has_network = get_router_ip_address() != None
@@ -2070,7 +2082,7 @@ def triage_install():
                 print >> triage_output, "The machine did not pass the triage. Please fix it." 
                 pass
             triage_output.close()
-            triage_dlg.textbox(triage_txt, width=76, height=19, cr_wrap=1, backtitle=btitle)
+            triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
             pass
 
         # If there is disk images, it's connected to a server
@@ -2097,7 +2109,7 @@ def triage_install():
         print "Installation complete."
         print "**********************"
         print ""
-        reboot()
+        # reboot()
         pass
     except (KeyboardInterrupt, SystemExit), e:
         print "Installation interrupted."
