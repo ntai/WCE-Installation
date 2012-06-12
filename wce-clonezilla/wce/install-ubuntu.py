@@ -2109,7 +2109,7 @@ def triage_install():
         print "Installation complete."
         print "**********************"
         print ""
-        # reboot()
+        reboot()
         pass
     except (KeyboardInterrupt, SystemExit), e:
         print "Installation interrupted."
