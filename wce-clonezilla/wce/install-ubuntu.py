@@ -2065,12 +2065,15 @@ def triage_install():
         if has_network and len(disk_images) == 0:
             # If it's connected to a network but no disk images, then
             # it's probably hooked up to a random router.
+            triage_output = open(triage_txt, "a+")
             if len(installed_disks) == 0:
-                triage_dlg.msgbox("Triage is complete.")
+                print >> triage_output, "Triage is complete."
                 pass
             else:
-                triage_dlg.msgbox("Triage is complete.\nIf it passes the triage, it's ready to ship.\n")
+                print >> triage_output, "Triage is complete. If it passes the triage, it's ready to ship.\n"
                 pass
+            triage_output.close()
+            triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle="Triage conclusion")
             triage_dlg.msgbox("Please turn off the computer.")
             pass
         elif (not has_network) and len(disk_images) == 0:
@@ -2083,6 +2086,7 @@ def triage_install():
                 pass
             triage_output.close()
             triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
+            triage_dlg.msgbox("Please turn off the computer.")
             pass
 
         # If there is disk images, it's connected to a server
