@@ -2124,6 +2124,7 @@ def triage_install():
     pass
 
 
+# Remote disk imaging
 def image_disk(args):
     global mounted_devices, mounted_partitions, dlg
     import dialog
@@ -2502,10 +2503,32 @@ def create_install_image(args):
     pass
 
 
+def usage(args):
+    print '''install-ubuntu.py [COMMANDS] [OPTIONS]
+ COMMANDS:
+  No argument: triage/installation
+  --create-install-image [image-file]: creates the disk image
+  --image-disk: Disk imaging over network
+  --install-iserver: Install installation server
+  --batch-install [image-file]: Installs disk image with batch
+  --check-installation: Checks the installtion
+  --update-grub, --finalize-disk: Runs disk finalization on local disk.
+  --help: prints this message
+  
+ OPTIONS:
+  --wait-for-disk: waits for the disk insertion. Used with --batch-install
+     or --finalzie-disk. It waits for the disk to appear, and the command
+     loops. This is convenient to keep the program continuously run to 
+     install software.
+  --addition-dir [path] : adds the files in path to the installation
+  --addition-tar [tar-file]: expands the tar file into the installation
+'''
+    pass
+
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar="])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -2521,7 +2544,9 @@ if __name__ == "__main__":
     cmd = None
     args = {}
     for opt, arg in opts:
-        if opt == "--image-disk":
+        if opt == "--help":
+            cmd = usage
+        elif opt == "--image-disk":
             cmd = image_disk
         elif opt == "--install-iserver":
             cmd = install_iserver
