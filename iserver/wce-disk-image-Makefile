@@ -1,0 +1,19 @@
+.PHONY: image_disk list tftpboot.tgz update-tftpboot
+
+image_disk:
+	/sbin/e2fsck /dev/sda1
+	/sbin/resize2fs -M /dev/sda1
+	/usr/sbin/partclone.extfs -c -s /dev/sda1 -o /mnt/www/wce-disk-images/wce-2011-10.partclone
+
+DISK_IMAGES := $(shell ls -1 | grep partclone | sort -r)
+HOSTNAME := $(shell cat server-hostname)
+
+list:
+	-mv ../wce-disk-images.txt ../wce-disk-images.txt.old
+	for image in ${DISK_IMAGES} ; do echo ftp://${HOSTNAME}/wce-disk-images/$$image >> ../wce-disk-images.txt ; echo http://${HOSTNAME}/wce-disk-images/$$image >> ../wce-disk-images.txt ; done
+
+tftpboot.tgz:
+	(cd /var/lib/tftpboot && tar cf - *)|gzip > $@
+
+update-tftpboot:
+	gunzip -c tftpboot.tgz | (cd /var/lib/tftpboot && sudo tar xf -)
