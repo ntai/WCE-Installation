@@ -39,8 +39,6 @@ SOURCES := \
 
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
 
-GENISOIMAGE := $(shell dpkg -l genisoimage 2>/dev/null)
-
 $(CLONEZILLA_LIVE) :
 	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/20110113-maverick/clonezilla-live-20110113-maverick.iso -O $@
 
@@ -104,29 +102,22 @@ extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg.template version
 	rm -f wce/isolinux.cfg
 
 
-squashfs-installed:
-	[ "$(SQUASHFS_TOOLS)" != "" ] || sudo apt-get install -y squashfs-tools
-	touch squashfs-installed
-
-
-extract-cd/live/filesystem.squashfs: squashfs-installed $(LIVEPATCHES)
+extract-cd/live/filesystem.squashfs: $(LIVEPATCHES)
+	if ! dpkg-query -l squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
 	sudo chmod +w extract-cd/live/filesystem.packages
 	sudo chroot fsimage dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
 	sudo cp wce/filesystem.packages extract-cd/live/filesystem.packages
 	sudo rm -f extract-cd/live/filesystem.squashfs
-	sudo mksquashfs fsimage extract-cd/live/filesystem.squashfs
+	sudo mksquashfs fsimage extract-cd/live/filesystem.squashfs -noappend
 	sudo chown $(USER):$(USER) extract-cd/live/filesystem.squashfs
 	sudo chmod 755 extract-cd/live/filesystem.squashfs
 	printf $$(sudo du -sx --block-size=1 fsimage | cut -f1) > wce/filesystem.size
 	sudo cp wce/filesystem.size extract-cd/live/filesystem.size
 
 
-genisoimage-installed:
-	[ "$(GENISOIMAGE)" != "" ] || sudo apt-get install -y genisoimage
-	touch genisoimage-installed
-
-$(ISOTARGET): $(SOURCES) genisoimage-installed version
-	cd extract-cd;sudo genisoimage $(UDF_FLAGS) -D -r -V "$$IMAGE_NAME" -cache-inodes -J -l -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -o ../$(ISOTARGET) .
+$(ISOTARGET): $(SOURCES) version Makefile
+	if ! dpkg-query -l genisoimage > /dev/null 2>&1 ; then sudo apt-get -y install genisoimage ; fi
+	cd extract-cd;sudo genisoimage $(UDF_FLAGS) -f -r -J -l -V "$$IMAGE_NAME" -cache-inodes -b isolinux/isolinux.bin -c isolinux/boot.cat -no-emul-boot -boot-load-size 4 -boot-info-table -publisher worldcomputerexchange.org -p ntai@smartfruit.com -input-charset utf-8 -output-charset utf-8 -V "wce_triage_$(WCEVERSION)" -o ../$(ISOTARGET) .
 
 
 gpg-key:
@@ -134,7 +125,7 @@ gpg-key:
 	wget -q http://drbl.sourceforge.net/GPG-KEY-DRBL -O- | sudo apt-key add -
 
 /usr/lib/syslinux:
-	sudo apt-get -y install syslinux
+	sudo apt-get -y install syslinux syslinux-common
 
 /usr/lib/syslinux/pxelinux.0: /usr/lib/syslinux
 
@@ -169,6 +160,7 @@ tftp: \
 /var/lib/tftpboot/pxelinux.0 \
 /var/lib/tftpboot/pxelinux.cfg/default \
 /var/lib/tftpboot/menu.c32 \
+/var/lib/tftpboot/chain.c32 \
 /var/lib/tftpboot/vesamenu.c32 \
 /var/lib/tftpboot/wce/boot/menu.cfg \
 /var/lib/tftpboot/wce/boot/wceboot.png \
@@ -183,6 +175,4 @@ tftp: \
 clean:
 	sudo rm -fR extract-cd fsimage fsimage-temp clonezilla_live
 	rm -f wce/filesystem.packages wce/filesystem.size
-	rm -f squashfs-installed
-
-
+	rm -f squashfs-installed genisoimage-installed

@@ -1,5 +1,5 @@
 default vesamenu.c32
-timeout 100
+timeout 150
 prompt 0
 noescape 1
 MENU MARGIN 5
@@ -28,30 +28,49 @@ MENU TITLE WCE -  clonezilla.org, clonezilla.nchc.org.tw
 # Since no network setting in the squashfs image, therefore if ip=frommedia, the network is disabled. That's what we want.
 label WCE Ubuntu installation
   MENU DEFAULT
-  # MENU HIDE
   MENU LABEL WCE Triage/Ubuntu installation
-  # MENU PASSWD
   kernel /live/vmlinuz
-  append initrd=/live/initrd.img boot=live hostname=wceinst config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal ip=frommedia acpi_enforce_resources=lax nosplash 
+  append initrd=/live/initrd.img boot=live hostname=wceinst config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" video=uvesafb:mode_option=800x600-16 ip=frommedia acpi_enforce_resources=lax nosplash 
   TEXT HELP
   * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
-  *  - created by Naoyuki "Tai" Tai, ntai@smartfruit.com
+  * VGA 800x600
   * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
   * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
   ENDTEXT
 
 
-label Ubuntu installation 800x600
+label WCE Ubuntu installation (To RAM)
   # MENU DEFAULT
-  # MENU HIDE
-  MENU LABEL WCE Triage/Ubuntu installation (VGA 800x600)
+  MENU LABEL WCE Triage/Ubuntu installation (To RAM)
   # MENU PASSWD
   kernel /live/vmlinuz
-  append initrd=/live/initrd.img boot=live hostname=maverick config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" video=uvesafb:mode_option=800x600-16 ip=frommedia acpi_enforce_resources=lax nosplash
+  append initrd=/live/initrd.img boot=live hostname=wceinst config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" video=uvesafb:mode_option=800x600-16 ip=frommedia acpi_enforce_resources=lax toram=filesystem.squashfs nosplash 
   TEXT HELP
-  VGA mode 800x600. OK for most of VGA cards.
   * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
-  *  - created by Naoyuki "Tai" Tai, ntai@smartfruit.com
+  * VGA 800x600, Uses RAM and frees CD/USB stick. RAM >= 384MB.
+  * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
+  * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
+  ENDTEXT
+
+
+label WCE Ubuntu installation VGA
+  MENU LABEL WCE Triage/Ubuntu installation (VGA)
+  kernel /live/vmlinuz
+  append initrd=/live/initrd.img boot=live hostname=maverick config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal ip=frommedia acpi_enforce_resources=lax nosplash
+  TEXT HELP
+  * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
+  * Normal VGA 640x480
+  * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
+  * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
+  ENDTEXT
+
+label WCE Ubuntu installation VGA, RAM
+  MENU LABEL WCE Triage/Ubuntu installation (VGA, To RAM)
+  kernel /live/vmlinuz
+  append initrd=/live/initrd.img boot=live hostname=maverick config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal ip=frommedia acpi_enforce_resources=lax toram=filesystem.squashfs nosplash
+  TEXT HELP
+  * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
+  * Normal VGA 640x480, Uses RAM and frees CD/USB stick. RAM >= 384MB.
   * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
   * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
   ENDTEXT
@@ -68,23 +87,15 @@ label local
 
 MENU BEGIN Memtest & FreeDOS
 
-# Note! *.bin is specially purpose for syslinux, 
-# Do NOT use memtest.bin, use memtest instead of memtest.bin
 label memtest
-  # MENU DEFAULT
-  # MENU HIDE
   MENU LABEL Memory test using Memtest86+
-  # MENU PASSWD
   kernel /live/memtest
   TEXT HELP
   Run memory test using Memtest86+
   ENDTEXT
 
 label FreeDOS
-  # MENU DEFAULT
-  # MENU HIDE
   MENU LABEL FreeDOS
-  # MENU PASSWD
   kernel memdisk
   append initrd=/live/freedos.img
   TEXT HELP
@@ -93,10 +104,7 @@ label FreeDOS
 
 MENU END
 label gPXE
-  # MENU DEFAULT
-  # MENU HIDE
   MENU LABEL Network boot via gPXE
-  # MENU PASSWD
   kernel /live/gpxe.lkn
   TEXT HELP
   Run gPXE to enable network (PXE) boot
