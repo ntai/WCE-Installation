@@ -1,0 +1,38 @@
+* Triage process
+
+This is getting more stable.
+The introduction of pre-installed disks will change the process and probably we'd need a few iterations, but the major part will stay the same.
+
+
+* Automation of installation server update.
+
+A flock of iServers need to update itself when the master server (wcemaster) is available.
+
+The work has began under "iserver" but there is a long way to go.
+
+* Disk imaging
+
+With the netboot/disk imaging and standalone disk imaging provided, this one has gotten much better lately.
+I still need to investigate why the new .lzo file is so much larger than the original
+
+* Ping server
+
+AFAIK, it' ping client seems to be working.
+It needs clear documentation.
+
+The server side remains the mistery. However, the log processing Python script is provided.
+
+
+* Installation server setup
+
+This area needs the installation automation and documentation.
+A bootstrapper is provided but not complete by any means.
+
+
+* Payload update procedure
+
+Needs a doc write up how to create/update/maintain the disk image.
+This is very likely not automatable.
+Ubuntu part is doable, but the WCE contents is manual labor. 
+WCE needs to learn providing the PPA packages so that WCE can ship the contents as Debian/Ubuntu packages.
+Until then, it's manual.

@@ -1,1 +1,3 @@
 isolinux.cfg
+filesystem.packages
+filesystem.size

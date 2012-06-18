@@ -1,0 +1,258 @@
+#!/usr/bin/python
+
+import os, sys, urllib, socket, subprocess, re, urlparse, string
+
+wce_dist_re = re.compile(r"^([\w\d/\.\-_\+]+)\s*\=\s*([a-fA-F\d]+)")
+
+# Try to get the network address of master server "wcemaster"
+# If it does not succeed, it will be NULL
+def get_master_address():
+    addr = None
+    try:
+        for family, socktype, proto, canonname, sockaddr in socket.getaddrinfo('wcemaster', 80):
+	    if family == 2:
+                addr, port = sockaddr
+                break
+            pass
+        pass
+    except socket.gaierror:
+        # Just eat up the name server error
+        pass
+    except Exception, e:
+        # Just eat up the name server error
+        pass
+    return addr
+
+
+# Fetch the master wce-dist.txt file
+def get_master_wce_dist(master_address):
+    wce_dist = ""
+    if (not master_address) or (len(master_address) == 0):
+        return wce_dist
+    try:
+        wce_dist_txt = urllib.urlopen("http://%s/wce-dist.txt" % master_address)
+        wce_dist = wce_dist_txt.read()
+        wce_dist_txt.close()
+    except:
+        pass
+    return wce_dist
+
+
+# Read the local wce-dist.txt
+def get_local_wce_dist():
+    wce_dist = ""
+    try:
+        local_file = open("/var/www/wce-dist.txt")
+        wce_dist = local_file.read()
+        local_file.close()
+    except:
+        pass
+    return wce_dist
+
+
+# Write to the local wce-dist.txt
+def put_local_wce_dist(wce_dist):
+    local_file = open("/var/www/wce-dist.txt", "w")
+    wce_dist = local_file.write(wce_dist)
+    local_file.close()
+    return
+
+
+# parse wce-dist.txt file and generate a map
+def parse_wce_dist(wce_dist):
+    files = {}
+    for line in wce_dist.split('\n'):
+        m = wce_dist_re.match(line.strip())
+        if m:
+            files[m.group(1)] = m.group(2)
+            pass
+        pass
+    return files
+
+
+# Generate the wce-dist.txt file from map
+def generate_wce_dist(dist):
+    output = []
+    for item in dist.keys():
+        output.append("%s = %s" % (item, dist[item]))
+        pass
+    if len(output) > 0:
+        output.append("")
+        pass
+    return "\n".join(output)
+
+
+#  Get the wce-disk-images.txt from master
+def get_master_wce_disk_images(master_address):
+    disk_images = ""
+    if (not master_address) or (len(master_address) == 0):
+        return wce_dist
+    try:
+        disk_images_txt = urllib.urlopen("http://%s/wce-disk-images.txt" % master_address)
+        disk_images = disk_images_txt.read()
+        disk_images_txt.close()
+    except:
+        pass
+    return disk_images
+
+
+#  Get the wce-disk-images.txt from local
+def get_local_wce_disk_images():
+    disk_images = ""
+    try:
+        disk_images_txt = open("/var/www/wce-disk-images.txt")
+        disk_images = disk_images_txt.read()
+        disk_images_txt.close()
+    except:
+        pass
+    return disk_images
+
+#
+# Update the WCE installation server distribution
+#
+def update_wce_iserver_dist(master_address):
+    local_dist = parse_wce_dist(get_local_wce_dist())
+    master_dist = parse_wce_dist(get_master_wce_dist(master_address))
+
+    new_dist = {}
+    updates = []
+    additions = []
+    deletions = []
+
+    for item in master_dist.keys():
+        if local_dist.has_key(item):
+            if local_dist[item] == master_dist[item]:
+                new_dist[item] = master_dist[item]
+            else:
+                updates.append(item)
+                pass
+            pass
+        if (not local_dist.has_key(item)):
+            additions.append(item)
+            pass
+        pass
+
+    for item in local_dist.keys():
+        if local_dist.has_key(item) and (not local_dist.has_key(item)):
+            deletions.append(item)
+            pass
+        pass
+
+    # First, deal with the deletions
+    for item in deletions:
+        target = '/var/www/%s' % item
+        os.unlink(target)
+        pass
+
+    # Second, get the additions and updates
+    run_make = False
+    for item in additions + updates:
+        master = 'http://%s/%s' % (master_address, item)
+        target = '/var/www/%s' % item
+        if os.path.exists(target):
+            os.unlink(target)
+            pass
+        retcode = subprocess.call("wget -q -O - '%s' > %s" % (master, target), shell=True)
+        if retcode == 0:
+            new_dist[item] = master_dist[item]
+            put_local_wce_dist(generate_wce_dist(new_dist))
+            run_make = True
+            pass
+        pass
+    return run_make
+
+
+# Get the transport scheme from url
+def get_transport_scheme(u):
+    transport_scheme = None
+    try:
+        transport_scheme = urlparse.urlsplit(u).scheme
+    except:
+        pass
+    return transport_scheme
+
+
+def parse_disk_images(image_list):
+    images = {}
+    for line in image_list.split('\n'):
+        l = line.strip()
+        url_elem = urlparse.urlsplit(l)
+        image_path = url_elem.path
+        transport_scheme = url_elem.scheme
+        # Only accept http
+        if transport_scheme and (transport_scheme == "http"):
+            images[image_path] = l
+            pass
+        pass
+    return images
+    
+
+# Update the disk images
+def update_wce_disk_images(local_host_name, master_address):
+    master_images = parse_disk_images(get_master_wce_disk_images(master_address))
+    local_images = parse_disk_images(get_local_wce_disk_images())
+
+    for image_path in master_images.keys():
+        if not local_images.has_key(image_path):
+            retcode = subprocess.call("wget -q -O - 'http://%s%s' > /var/www/%s" % (master_address, image_path, image_path), shell=True)
+            if retcode == 0:
+                f = open("/var/www/wce-disk-images.txt", "a+")
+                print >> f, "ftp://%s%s" % (local_host_name, image_path)
+                print >> f, "http://%s%s" % (local_host_name, image_path)
+                f.close()
+                pass
+            pass
+        pass
+    pass
+
+
+if __name__ == "__main__":
+    pid_file = '/var/run/update-wce-iserver.pid'
+    running_pid = None
+    still_running = False
+    
+    try:
+        f = open(pid_file)
+        s = f.read()
+        f.close()
+        running_pid = string.atoi(s)
+
+        f = open("/proc/%d/cmdline" % running_pid)
+        s = f.read()
+        f.close()
+        still_running = True
+    except:
+        pass
+
+    if still_running:
+       sys.exit(0)
+       pass
+
+    f = open(pid_file, "w")
+    f.write("%d" % os.getpid())
+    f.close()
+
+    master_address = get_master_address()
+    if master_address:
+        # Update wce iserver dist
+        run_make = update_wce_iserver_dist(master_address)
+
+        #
+        f = open("/var/www/wce-disk-images/server-hostname")
+        local_host_name = f.read().strip()
+        f.close()
+
+        # Update disk images
+        update_wce_disk_images(local_host_name, master_address)
+
+        if run_make:
+            os.chdir("/var/www")
+            subprocess.call("make -f wce-iserver.Makefile", shell=True)
+            pass
+        pass
+
+    try:
+        os.unlink(pid_file)
+    except:
+        pass
+    pass
