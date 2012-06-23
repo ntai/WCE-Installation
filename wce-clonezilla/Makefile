@@ -108,7 +108,7 @@ extract-cd/live/filesystem.squashfs: $(LIVEPATCHES)
 	sudo chroot fsimage dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
 	sudo cp wce/filesystem.packages extract-cd/live/filesystem.packages
 	sudo rm -f extract-cd/live/filesystem.squashfs
-	sudo mksquashfs fsimage extract-cd/live/filesystem.squashfs -noappend
+	sudo mksquashfs fsimage extract-cd/live/filesystem.squashfs -noappend -always-use-fragments -b 256K
 	sudo chown $(USER):$(USER) extract-cd/live/filesystem.squashfs
 	sudo chmod 755 extract-cd/live/filesystem.squashfs
 	printf $$(sudo du -sx --block-size=1 fsimage | cut -f1) > wce/filesystem.size
