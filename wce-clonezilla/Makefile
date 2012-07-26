@@ -101,9 +101,8 @@ extract-cd/isolinux/isolinux.cfg: wce/isolinux.cfg.template version
 	sudo cp wce/isolinux.cfg $@
 	rm -f wce/isolinux.cfg
 
-
 extract-cd/live/filesystem.squashfs: $(LIVEPATCHES)
-	if ! dpkg-query -l squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
+	if ! dpkg-query -s squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
 	sudo chmod +w extract-cd/live/filesystem.packages
 	sudo chroot fsimage dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
 	sudo cp wce/filesystem.packages extract-cd/live/filesystem.packages
