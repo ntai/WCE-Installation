@@ -1769,10 +1769,15 @@ def triage(output):
         print >> output, "Hard Drive:"
         good_disk = False
         for disk in disks:
+            disk_msg = "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
             if (disk.size / 1000) >= 20:
                 good_disk = True
+                disk_msg += " - PASS"
                 pass
-            print >> output, "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
+            else:
+                disk_msg += " - TOO SMALL"
+                pass
+            print >> output, disk_msg
             pass
         if not good_disk:
             triage_result = False
