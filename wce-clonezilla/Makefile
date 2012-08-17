@@ -181,7 +181,7 @@ clean:
 	rm -f squashfs-installed genisoimage-installed
 
 
-.phone: prerequisits debian
+.phony: prerequisits debian
 
 prerequisits:
 	if ! dpkg-query -s squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
