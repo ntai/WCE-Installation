@@ -614,7 +614,31 @@ class disk:
             to_do = to_do + "apt-get -q -y --force-yes purge `dpkg --get-selections | cut -f 1 | grep -v xorg | grep nvidia-`\n"
             pass
 
+        #
         chroot_and_exec(to_do, self.uuid1, grub_cfg_patch)
+
+        #
+        # Patch up the grub.cfg just in case the "/dev/disk/by-uuid/%s" % 
+        # self.uuid1 does not exist. If that happens, grub-mkconfig 
+        # genertes the device name based grub.cfg which is bad.
+        #
+        # This should fix up the most of unbootable disk imaging.
+        #
+        root_fs = "UUID=%s" % self.uuid1
+        linux_re = re.compile(r'(\s+linux\s+[^ ]+\s+root=)([^ ]+)(\s+ro .*)')
+        grub_cfg_file = open("/mnt/wce_install_target/boot/grub/grub.cfg")
+        grub_cfg = grub_cfg_file.readlines()
+        grub_cfg_file.close()
+        grub_cfg_file = open("/mnt/wce_install_target/boot/grub/grub.cfg", "w")
+        for line in grub_cfg:
+            m = linux_re.match(line)
+            if m:
+                grub_cfg_file.write("%s%s%s\n" % (m.group(1), root_fs, m.group(3)))
+            else:
+                grub_cfg_file.write(line)
+                pass
+            pass
+        grub_cfg_file.close()
         pass
 
 
@@ -789,6 +813,7 @@ mount -t devpts none /dev/pts
 chmod +rw /boot/grub/grub.cfg
 export GRUB_DEVICE_UUID="%s"
 export GRUB_DISABLE_OS_PROBER=true
+export GRUB_DISABLE_LINUX_UUID=false
 grub-mkconfig -o /boot/grub/grub.cfg
 ''' % root_partition_uuid)
 
