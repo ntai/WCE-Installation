@@ -152,6 +152,8 @@ tftpboot/pxelinux.0: /usr/lib/syslinux/pxelinux.0
 /var/lib/tftpboot/pxelinux.cfg/default: tftpboot/pxelinux.cfg/default
 	sudo install -D $< $@
 
+/usr/lib/syslinux/%.c32: /usr/lib/syslinux
+
 /var/lib/tftpboot/%.c32: /usr/lib/syslinux/%.c32
 	sudo install -D $< $@
 
@@ -171,7 +173,33 @@ tftp: \
 /var/lib/tftpboot/wce/live/memtest \
 /var/lib/tftpboot/wce/live/vmlinuz
 
+.phony: clean
+
 clean:
 	sudo rm -fR extract-cd fsimage fsimage-temp clonezilla_live
 	rm -f wce/filesystem.packages wce/filesystem.size
 	rm -f squashfs-installed genisoimage-installed
+
+
+.phony: prerequisits debian
+
+prerequisits:
+	if ! dpkg-query -s squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
+	if ! dpkg-query -s wireless-tools > /dev/null 2>&1 ; then sudo apt-get -y install wireless-tools ; fi
+	if ! dpkg-query -s python-dialog > /dev/null 2>&1 ; then sudo apt-get -y install python-dialog ; fi
+	if ! dpkg-query -s xz-utils > /dev/null 2>&1 ; then sudo apt-get -y install xz-utils ; fi
+	if ! dpkg-query -s smartmontools > /dev/null 2>&1 ; then sudo apt-get -y install smartmontools ; fi
+	if ! dpkg-query -s wipe > /dev/null 2>&1 ; then sudo apt-get -y install wipe ; fi
+	if ! dpkg-query -s pigz > /dev/null 2>&1 ; then sudo apt-get -y install pigz ; fi
+	if ! dpkg-query -s lzop > /dev/null 2>&1 ; then sudo apt-get -y install lzop ; fi
+	if ! dpkg-query -s kbd > /dev/null 2>&1 ; then sudo apt-get -y install kbd ; fi
+	if ! dpkg-query -s parted > /dev/null 2>&1 ; then sudo apt-get -y install parted ; fi
+	if ! dpkg-query -l genisoimage > /dev/null 2>&1 ; then sudo apt-get -y install genisoimage ; fi
+	if ! dpkg-query -s squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
+	if ! dpkg-query -s partclone > /dev/null 2>&1 ; then sudo apt-get -y install partclone ; fi
+
+debian:
+	wget -q http://drbl.org/GPG-KEY-DRBL -O- | sudo apt-key add -
+	echo "deb http://drbl.sourceforge.net/drbl-core drbl stable" > /tmp/drbl.list
+	sudo cp /tmp/drbl.list /etc/apt/sources.list.d/drbl.list
+	sudo apt-get update

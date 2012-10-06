@@ -721,6 +721,7 @@ class disk:
         installed = False
         for partition in self.partitions:
             if partition.partition_name == part1 and partition.partition_type == '83':
+                print "Partition %s has the linux partition type" % partition.partition_name
                 # The parition 
                 try:
                     self.mount_disk()
