@@ -788,9 +788,9 @@ class disk:
             pass
 
         if decomp == "cat":
-            partclone = subprocess.Popen("partclone.ext4 -B -r -s %s -o %s1" % (partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+            partclone = subprocess.Popen("partclone.ext4 -B -r -s %s -o %s1" % (partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         else:
-            partclone = subprocess.Popen("%s '%s' | partclone.ext4 -B -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+            partclone = subprocess.Popen("%s '%s' | partclone.ext4 -B -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
             pass
 
         read_set = [partclone.stdout, partclone.stderr]
@@ -863,15 +863,15 @@ class disk:
                 pass
             pass
 
-        print "071 e2fsck"
+        print "071 File system check (e2fsck)"
         sys.stdout.flush()
-        e2fsck = subprocess.Popen("/sbin/e2fsck -f -y %s1 -C 2" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        e2fsck = subprocess.Popen("/sbin/e2fsck -f -y %s1 -C 2" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         e2fsck.communicate()
-        print "075 resize2fs start"
+        print "080 Expanding file system (resize2fs)"
         sys.stdout.flush()
-        resize2fs = subprocess.Popen("resize2fs -p %s1" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        resize2fs = subprocess.Popen("resize2fs -p %s1" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         resize2fs.communicate()
-        print "080 resize2fs done"
+        print "089 Expanding file system complete"
         sys.stdout.flush()
         pass
 
@@ -2831,6 +2831,11 @@ class GUIInstaller:
 
     def refresh_disks_cb(self, b):
         self.refresh_disks()
+        for row in range(0, 3):
+            which = self.progress_table.get_iter(row)
+            self.progress_table.set(which, 1, "")
+            self.progress_table.set(which, 2, 0)
+            pass
         pass
 
     def refresh_disks(self):
@@ -2892,7 +2897,7 @@ class GUIInstaller:
     def install_image(self, disk_name):
         cmdline = "%s --install %s --target-disk %s" % (sys.argv[0], self.image_file, disk_name )
         cmd_args = shlex.split(cmdline)
-        backend = subprocess.Popen(cmd_args, bufsize=1, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        backend = subprocess.Popen(cmd_args, bufsize=1, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         read_set = [backend.stdout, backend.stderr]
         write_set = []
         progress_re = re.compile(r'(\d\d\d) (.*)')
@@ -2934,12 +2939,12 @@ class GUIInstaller:
                             progress = string.atof(m.group(1))
                             if progress < 20:
                                 progress_min = 0
-                                progress_max = 20
+                                progress_max = 19
                                 row = 0
                                 pass
                             elif progress < 90:
                                 progress_min = 20
-                                progress_max = 90
+                                progress_max = 89
                                 row = 1
                                 pass
                             elif progress <= 100:
@@ -3028,6 +3033,7 @@ def installer_backend(args):
     except mkfs_failed, e:
         print "999 ERROR: File system creation failed" % target.device_name
         pass
+    print "019 Partitioning completed"
     print "020 Restore disk image"
     sys.stdout.flush()
     target.restore_disk_image_backend(disk_image_file)
@@ -3040,7 +3046,8 @@ def installer_backend(args):
     sys.stdout.flush()
     target.create_wce_tag(target.partclone_image)
     target.unmount_disk()
-    print "100 Complete"
+    print "099 Complete"
+    print "100 Image installation successful"
     sys.stdout.flush()
     sys.exit(0)
     pass
