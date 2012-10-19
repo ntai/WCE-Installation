@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime, getopt, traceback
+try:
+    import shlex
+except:
+    pass
 
-installer_version = "0.60"
+installer_version = "0.61"
 
 wce_release_file = '/mnt/wce_install_target/etc/wce-release'
-
 
 fstab_template = '''# /etc/fstab: static file system information.
 #
@@ -267,7 +270,7 @@ class disk:
     def install_ubuntu(self, memsize, newhostname, grub_cfg_patch):
         ask_continue = True
         try:
-            self.partition_disk(memsize)
+            self.partition_disk(memsize, True)
             ask_continue = False
         except mkfs_failed, e:
             pass
@@ -309,7 +312,7 @@ class disk:
         pass
 
 
-    def partition_disk(self, memsize):
+    def partition_disk(self, memsize, verbose):
         if not self.sectors:
             parted = subprocess.Popen("parted -s -m %s unit s print" % (self.device_name), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (out, err) = parted.communicate()
@@ -317,7 +320,9 @@ class disk:
             disk_line = lines[1]
             columns = disk_line.split(":")
             if columns[0] != self.device_name:
-                print "parted format changed!? Talk to Tai"
+                if verbose:
+                    print "# parted format changed!? Talk to Tai"
+                    pass
                 sys.exit(1)
                 pass
             sectors = string.atoi(columns[1][:-1])
@@ -326,7 +331,9 @@ class disk:
         else:
             sectors = self.sectors
             pass
-        print "Disk has %d sectors" % sectors
+        if verbose:
+            print "# Disk has %d sectors" % sectors
+            pass
 
         # Everything is multiple of 8, so that 4k sector problem never happens
 
@@ -352,7 +359,9 @@ class disk:
         part5_end = part2_end
 
         args = ["parted", "-s", self.device_name, "unit", "s", "mklabel", "msdos", "mkpart", "primary", "ext2", "2048", "%d" % part1_end, "mkpart", "extended", "%d" % part2_start, "%d" % part2_end, "mkpart", "logical", "linux-swap", "%d" % part5_start, "%d" % part5_end, "set", "1", "boot", "on" ]
-        print "Executing " + " ".join(args)
+        if verbose:
+            print "# Executing " + " ".join(args)
+            pass
         parted = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out, err) = parted.communicate()
         pass
@@ -472,7 +481,6 @@ class disk:
     def partclone_restore_disk(self, partclone_image_file):
         print "restoring disk image"
 
-
         ext = ""
         try:
             ext = os.path.splitext(partclone_image_file)[1]
@@ -526,7 +534,7 @@ class disk:
 
 
     def finalize_disk(self, newhostname, grub_cfg_patch):
-        print "Finalizing disk"
+        print "# Finalizing disk"
 
         blkid = subprocess.Popen(["blkid"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = blkid.communicate()
@@ -544,8 +552,8 @@ class disk:
                 pass
             pass
 
-        print "Primary %s1 - UUID: %s" % (self.device_name, self.uuid1)
-        print "Swap    %s5 - UUID: %s" % (self.device_name, self.uuid2)
+        print "# Primary %s1 - UUID: %s" % (self.device_name, self.uuid1)
+        print "# Swap    %s5 - UUID: %s" % (self.device_name, self.uuid2)
         
         # patch up the restore
         fstab = open("/mnt/wce_install_target/etc/fstab", "w")
@@ -715,6 +723,20 @@ class disk:
             pass
         raise unmount_failed
 
+    def force_unmount_disk(self):
+        retcode = subprocess.call("sync", shell=True)
+        time.sleep(0.5)
+        retcode = subprocess.call("umount %s1" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        time.sleep(0.5)
+        retcode = subprocess.call("umount %s2" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        time.sleep(0.5)
+        retcode = subprocess.call("umount %s3" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        time.sleep(0.5)
+        retcode = subprocess.call("umount %s4" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        time.sleep(0.5)
+        self.mounted = False
+        return
+
 
     def has_wce_release(self):
         part1 = self.device_name + "1"
@@ -742,6 +764,116 @@ class disk:
                 break
             pass
         return installed
+
+
+    def restore_disk_image_backend(self, partclone_image_file):
+        ext = ""
+        try:
+            ext = os.path.splitext(partclone_image_file)[1]
+        except:
+            pass
+        if ext == ".7z":
+            decomp = "7z e -so"
+        elif ext == ".gz":
+            decomp = "gunzip -c"
+        elif ext == ".xz":
+            decomp = "unxz -c"
+        elif ext == ".partclone":
+            # aka no compression
+            decomp = "cat"
+        elif ext == ".lzo":
+            decomp = "lzop -dc"
+        else:
+            decomp = "gunzip -c"
+            pass
+
+        if decomp == "cat":
+            partclone = subprocess.Popen("partclone.ext4 -B -r -s %s -o %s1" % (partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        else:
+            partclone = subprocess.Popen("%s '%s' | partclone.ext4 -B -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+            pass
+
+        read_set = [partclone.stdout, partclone.stderr]
+        write_set = []
+
+        partclone_output = ""
+        partclone_error = ""
+
+        start_re = []
+        start_re.append(re.compile(r'Partclone [^ ]+ http://partclone.org\n'))
+        start_re.append(re.compile(r'Starting to restore image \([^\)]+\) to device \(/dev/\w+\)\n'))
+        start_re.append(re.compile(r'Calculating bitmap... Please wait... done!\n'))
+        start_re.append(re.compile(r'File system:\s+EXTFS\n'))
+        start_re.append(re.compile(r'Device size:\s+[\d.]+\s+GB\n'))
+        start_re.append(re.compile(r'Space in use:\s+[\d.]+\s+GB\n'))
+        start_re.append(re.compile(r'Free Space:\s+[\d.]+\s+MB\n'))
+        start_re.append(re.compile(r'Block size:\s+\d+\s+Byte\n'))
+        start_re.append(re.compile(r'Used block :\s+\d+\n'))
+        progress_re = re.compile(r'\r\s+\rElapsed: (\d\d:\d\d:\d\d), Remaining: (\d\d:\d\d:\d\d), Completed:\s+(\d+.\d*)%,\s+([^\/]+)/min,')
+
+        while read_set:
+            try:
+                rlist, wlist, xlist = select.select(read_set, write_set, [])
+            except select.error, e:
+                if e.args[0] == errno.EINTR:
+                    continue
+                raise
+            
+            if partclone.stdout in rlist:
+                data = os.read(partclone.stdout.fileno(), 1024)
+                if data == "":
+                    read_set.remove(partclone.stdout)
+                    pass
+                else:
+                    # Ignore the stdout
+                    pass
+                pass
+            
+            if partclone.stderr in rlist:
+                data = os.read(partclone.stderr.fileno(), 1024)
+                if data == "":
+                    partclone.stderr.close()
+                    read_set.remove(partclone.stderr)
+                    pass
+                else:
+                    partclone_error = partclone_error + data
+                    if len(start_re) > 0:
+                        while len(start_re) > 0:
+                            m = start_re[0].match(partclone_error)
+                            if not m:
+                                break
+                            start_re = start_re[1:]
+                            partclone_error = partclone_error[len(m.group(0)):]
+                            pass
+                        pass
+                    else:
+                        while True:
+                            m = progress_re.match(partclone_error)
+                            if not m:
+                                break
+                            partclone_error = partclone_error[len(m.group(0)):]
+                            elapsed = m.group(1)
+                            remaining = m.group(2)
+                            completed = string.atof(m.group(3))
+                            print "0%2d elapsed: %s remaining: %s" % (round(20 + 50 * completed / 100), elapsed, remaining)
+                            sys.stdout.flush()
+                            pass
+                        pass
+                    pass
+                pass
+            pass
+
+        print "071 e2fsck"
+        sys.stdout.flush()
+        e2fsck = subprocess.Popen("/sbin/e2fsck -f -y %s1 -C 2" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        e2fsck.communicate()
+        print "075 resize2fs start"
+        sys.stdout.flush()
+        resize2fs = subprocess.Popen("resize2fs -p %s1" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        resize2fs.communicate()
+        print "080 resize2fs done"
+        sys.stdout.flush()
+        pass
 
     pass
 
@@ -793,7 +925,7 @@ class optical_drive:
 
 
 def chroot_and_exec(things_to_do, root_partition_uuid, grub_cfg_patch):
-    print "chroot and execute"
+    print "# chroot and execute"
     try:
         subprocess.call("mount --bind /dev/ /mnt/wce_install_target/dev", shell=True)
     except:
@@ -835,7 +967,7 @@ umount /dev/pts
     chroot = subprocess.Popen(["/usr/sbin/chroot", "/mnt/wce_install_target", "/bin/sh", "/tmp/install-grub"], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     (out, err) = chroot.communicate()
     if chroot.returncode == 0:
-        print "grub installation complete."
+        print "# grub installation complete."
     else:
         print out
         print err
@@ -1054,7 +1186,7 @@ def disk_is_a_real_disk(disk_name):
 
 
 # This one gets the disks on IDE / SATA only
-def get_disks(list_mounted_disks):
+def get_disks(list_mounted_disks, verbose):
     global mounted_devices, mounted_partitions
 
     disks = []
@@ -1084,12 +1216,16 @@ def get_disks(list_mounted_disks):
 
     # Gather up the possible disks
     possible_disks = find_disk_device_files("/dev/hd") + find_disk_device_files("/dev/sd")
-    print "Possible disks = %s" % str(possible_disks)
+    if verbose:
+        print "# Possible disks = %s" % str(possible_disks)
+        pass
     
     for disk_name in possible_disks:
         # Let's out right skip the mounted disk
         if mounted_devices.has_key(disk_name) and (not list_mounted_disks):
-            print "Mounted disk %s is not included in the candidate." % disk_name
+            if verbose:
+                print "Mounted disk %s is not included in the candidate." % disk_name
+                pass
             continue
 
         # Now, I do double check that this is really a disk
@@ -1165,7 +1301,9 @@ def get_disks(list_mounted_disks):
                     continue
                 m = disk1_re.match(line)
                 if m:
-                    print "Found a disk"
+                    if verbose:
+                        print "# Found a disk"
+                        pass
                     current_disk = disk()
                     current_disk.device_name = disk_name
                     current_disk.mounted = mounted_devices.has_key(current_disk.device_name)
@@ -1189,7 +1327,9 @@ def get_disks(list_mounted_disks):
                 pass
             pass
         else:
-            print "Did not find the disk %s" % disk_name
+            if verbose:
+                print "Did not find the disk %s" % disk_name
+                pass
             pass
         pass
 
@@ -1540,7 +1680,7 @@ Talk to the admin of installation server if you are installing.""",
             raise Exception("No disk images")
         pass
 
-    disks, usb_disks = get_disks(False)
+    disks, usb_disks = get_disks(False, True)
     if include_usb_disks:
         disks = disks + usb_disks
         pass
@@ -1758,7 +1898,7 @@ def triage(output):
     if total_memory == 0:
         total_memory = get_memory_size()
         pass
-    disks, usb_disks = get_disks(True)
+    disks, usb_disks = get_disks(True, True)
     n_nvidia, n_ati, n_vga = detect_video_cards()
     (ethernet_detected, bad_ethernet_cards, eth_devices) = detect_ethernet()
     sound_dev = detect_sound_device()
@@ -2197,7 +2337,7 @@ def image_disk(args):
             pass
 
 
-        disks, usb_disks = get_disks(False)
+        disks, usb_disks = get_disks(False, True)
         disks = disks + usb_disks
         sources = []
         index = 1
@@ -2305,7 +2445,7 @@ def install_iserver(args):
             break
         pass
 
-    disks, usb_disks = get_disks(False)
+    disks, usb_disks = get_disks(False, True)
     disks = disks
     if len(disks) == 0:
         print "Hard Drive: NOT DETECTED -- INSTALL A DISK"
@@ -2397,7 +2537,7 @@ def batch_install(args):
 
 
 def check_installation(args):
-    disks, usb_disks = get_disks(False)
+    disks, usb_disks = get_disks(False, True)
     disks = disks + usb_disks
     print "Disk count %d" % len(disks)
     for disk in disks:
@@ -2419,21 +2559,21 @@ def finalize_wce_disk(args):
 
     while True:
         if wait_for_disk:
-            print "Waiting for disk to appear"
+            print "# Waiting for disk to appear"
             wait_for_disk_insertion()
             pass
 
-        disks, usb_disks = get_disks(False)
+        disks, usb_disks = get_disks(False, True)
         disks = disks + usb_disks
-        print "Disk count %d" % len(disks)
+        print "# Disk count %d" % len(disks)
 
         targets = []
         index = 1
         n_wce_ubuntu_disk = 0
         first_target = None
         skipped = 0
-        print "Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
-        print "Detected disks"
+        print "# Disks so far - ata/sata %d, usb %d" % (len(disks), len(usb_disks))
+        print "# Detected disks"
         wce_ubuntu_disks = []
         for d in disks:
             if mounted_devices.has_key(d.device_name):
@@ -2503,7 +2643,7 @@ def create_install_image(args):
     wait_for_disk = safe_get_arg(args, "wait-for-disk", False)
     image_file = args["image-file"]
 
-    disks, usb_disks = get_disks(False)
+    disks, usb_disks = get_disks(False, True)
     disks = disks + usb_disks
     sources = []
     print "Disk count %d" % len(disks)
@@ -2538,6 +2678,374 @@ def create_install_image(args):
     pass
 
 
+class GUIInstaller:
+    ui = '''<ui>
+    <menubar name="MenuBar">
+      <menu action="File">
+        <menuitem action="Choose"/>
+        <menuitem action="Refresh"/>
+        <menuitem action="Install"/>
+        <menuitem action="Quit"/>
+      </menu>
+    </menubar>
+
+    <toolbar name="Toolbar">
+      <toolitem action="Choose"/>
+      <toolitem action="Refresh"/>
+      <toolitem action="Install"/>
+      <toolitem action="Quit"/>
+      <separator/>
+    </toolbar>
+
+    </ui>'''
+      
+    def __init__(self):
+        #
+        self.image_file = None
+
+        # Create the toplevel window
+        window = gtk.Window()
+        window.connect('destroy', lambda w: gtk.main_quit())
+        window.set_size_request(500, -1)
+        vbox = gtk.VBox()
+        window.add(vbox)
+
+        # Create a UIManager instance
+        uimanager = gtk.UIManager()
+        self.uimanager = uimanager
+
+        # Add the accelerator group to the toplevel window
+        accelgroup = uimanager.get_accel_group()
+        window.add_accel_group(accelgroup)
+
+        # Create an ActionGroup
+        actiongroup = gtk.ActionGroup('DiskImageInstaller')
+        self.actiongroup = actiongroup
+
+        # Create actions
+        actiongroup.add_actions([('Quit', gtk.STOCK_QUIT, '_Quit', None, 'Quit the Program', self.quit_cb),
+                                 ('File', None, '_File')])
+        actiongroup.add_actions([('Choose', gtk.STOCK_OPEN, '_Choose image...', None, 'Choose disk image file', self.choose_image_file_cb),
+                                 ('Install', gtk.STOCK_APPLY, '_Install', None, 'Install', self.install_cb),
+                                 ('Refresh', gtk.STOCK_REFRESH, '_Refresh', None, 'Refresh disk status', self.refresh_disks_cb)])
+        actiongroup.get_action('Quit').set_property('short-label', '_Quit')
+
+        # Add the actiongroup to the uimanager
+        uimanager.insert_action_group(actiongroup, 0)
+
+        # Add a UI description
+        uimanager.add_ui_from_string(self.ui)
+
+        # Create a MenuBar
+        menubar = uimanager.get_widget('/MenuBar')
+        vbox.pack_start(menubar, False)
+
+        # Create a Toolbar
+        toolbar = uimanager.get_widget('/Toolbar')
+        vbox.pack_start(toolbar, False)
+
+        # Create the image file
+        self.image_file_label = gtk.Label('Image file:')
+        self.image_file_label.set_alignment(0, 0.5)
+        vbox.pack_start(self.image_file_label)
+
+        disks_label = gtk.Label('Disks')
+        disks_label.set_alignment(0.5, 1.0)
+        vbox.pack_start(disks_label)
+
+        buttonbox = gtk.HButtonBox()
+        self.disk_buttons = []
+        
+        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf" ]:
+            disk_button = gtk.CheckButton(name)
+            self.disk_buttons.append(disk_button)
+            disk_button.set_active(True)
+            disk_button.connect('toggled', self.toggle_disk)
+            buttonbox.pack_start(disk_button, False)
+            pass
+
+        vbox.pack_start(buttonbox)
+
+        
+        liststore = gtk.ListStore(str, str, int)
+        liststore.append(["Partitioning", "", 0])
+        liststore.append(["Imaging",      "", 0])
+        liststore.append(["Finalizing",   "", 0])
+        self.progress_table = liststore
+
+        treeview = gtk.TreeView(liststore)
+        
+        column_phase = gtk.TreeViewColumn("Activity")
+        treeview.append_column(column_phase)
+
+        column_status = gtk.TreeViewColumn("Status")
+        treeview.append_column(column_status)
+
+        column_progress = gtk.TreeViewColumn("Progress")
+        treeview.append_column(column_progress)
+
+        cell_phase_renderer = gtk.CellRendererText()
+        column_phase.pack_start(cell_phase_renderer, False)
+        column_phase.add_attribute(cell_phase_renderer, "text", 0)
+        
+        cell_status_renderer = gtk.CellRendererText()
+        column_status.pack_start(cell_status_renderer, False)
+        column_status.add_attribute(cell_status_renderer, "text", 1)
+
+        cell_progress_renderer = gtk.CellRendererProgress()
+        column_progress.pack_start(cell_progress_renderer, True)
+        column_progress.add_attribute(cell_progress_renderer, "value", 2)
+
+        vbox.pack_start(treeview)
+
+        window.show_all()
+
+        self.refresh_disks()
+        return
+
+    def toggle_disk(self, action):
+        # action has not toggled yet
+        return
+
+    def quit_cb(self, b):
+        gtk.main_quit()
+        pass
+
+    def choose_image_file_cb(self, b):
+        self.choose_image_file()
+        pass
+
+    def choose_image_file(self):
+        chooser = gtk.FileChooserDialog(title="Choose WCE Disk Image File",
+                                        action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                                        buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
+        chooser.set_current_folder("/var/www/wce-disk-images")
+
+        response = chooser.run()
+        if response == gtk.RESPONSE_OK:
+            self.image_file = chooser.get_filename()
+            self.image_file_label.set_text("Image file: %s" % self.image_file)
+            pass
+        chooser.destroy()
+        pass
+
+    def refresh_disks_cb(self, b):
+        self.refresh_disks()
+        pass
+
+    def refresh_disks(self):
+        global mounted_devices, mounted_partitions
+        disks, usb_disks = get_disks(True, False)
+
+        all_disks = disks + usb_disks
+        table = {}
+        for disk in all_disks:
+            table[disk.device_name] = 1
+            pass
+
+        for disk_button in self.disk_buttons:
+            disk_name = "/dev/%s" % disk_button.get_label()
+            if table.has_key(disk_name):
+                disk_button.set_sensitive(True)
+                if mounted_devices.has_key(disk_name):
+                    disk_button.set_active(False)
+                else:
+                    disk_button.set_active(True)
+                    pass
+            else:
+                disk_button.set_active(False)
+                disk_button.set_sensitive(False)
+                pass
+            pass
+
+        pass
+
+    def install_cb(self, b):
+        self.start_installation()
+        pass
+
+    def start_installation(self):
+
+        self.progress_table
+
+        if not self.image_file:
+            self.choose_image_file()
+            if not self.image_file:
+                return
+            pass
+
+        install_button = self.uimanager.get_widget('/Toolbar/Install')
+        install_button.set_sensitive(False)
+
+        for disk_button in self.disk_buttons:
+            disk_name = "/dev/%s" % disk_button.get_label()
+            if disk_button.get_active() and disk_button.get_sensitive():
+                self.install_image(disk_name)
+                disk_button.set_active(False)
+                pass
+            pass
+
+        install_button.set_sensitive(True)
+        pass
+
+
+    def install_image(self, disk_name):
+        cmdline = "%s --install %s --target-disk %s" % (sys.argv[0], self.image_file, disk_name )
+        cmd_args = shlex.split(cmdline)
+        backend = subprocess.Popen(cmd_args, bufsize=1, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        read_set = [backend.stdout, backend.stderr]
+        write_set = []
+        progress_re = re.compile(r'(\d\d\d) (.*)')
+        stderr_data = ""
+        stdout_data = ""
+        rlist = []
+
+        while backend.poll() == None:
+            try:
+                rlist, wlist, xlist = select.select(read_set, write_set, [], 0.5)
+            except select.error, e:
+                if e.args[0] == errno.EINTR:
+                    continue
+                raise
+
+            if backend.stderr in rlist:
+                data = os.read(backend.stderr.fileno(), 1024)
+                if data == "":
+                    read_set.remove(backend.stderr)
+                    pass
+                else:
+                    pass
+                pass
+
+            if backend.stdout in rlist:
+                data = os.read(backend.stdout.fileno(), 1024)
+                if data == "":
+                    read_set.remove(backend.stdout)
+                    pass
+                else:
+                    sys.stdout.write(data)
+                    stdout_data = stdout_data + data
+                    lines = stdout_data.split('\n')
+                    stdout_data = lines[-1]
+                    lines = lines[:-1]
+                    for line in lines:
+                        m = progress_re.match(line)
+                        if m:
+                            progress = string.atof(m.group(1))
+                            if progress < 20:
+                                progress_min = 0
+                                progress_max = 20
+                                row = 0
+                                pass
+                            elif progress < 90:
+                                progress_min = 20
+                                progress_max = 90
+                                row = 1
+                                pass
+                            elif progress <= 100:
+                                progress_min = 90
+                                progress_max = 100
+                                row = 2
+                                pass
+
+                            which = self.progress_table.get_iter(row)
+                            self.progress_table.set(which, 1, m.group(2))
+                            self.progress_table.set(which, 2, (100*(progress - progress_min)) / (progress_max - progress_min))
+                            if progress >= 100:
+                                break
+                            pass
+                        pass
+                    pass
+                pass
+
+            while gtk.events_pending():
+                gtk.main_iteration()
+                pass
+
+            pass
+        pass
+
+    pass
+
+
+def gui_install_image(args):
+    GUIInstaller()
+    gtk.main()
+    return
+
+
+def installer_backend(args):
+    global mounted_devices, disk_images
+
+    disk_image_file = args['image-file']
+    if disk_image_file == None:
+        print "999 ERROR: no disk image."
+        sys.exit(1)
+        return
+
+    target_disk = args['target-disk']
+
+    disks, usb_disks = get_disks(True, True)
+    disks = disks + usb_disks
+    if len(disks) == 0:
+        print "999 ERROR: no disks detected"
+        sys.exit(1)
+        pass
+        
+    index = 1
+    n_free_disk = 0
+    first_target = None
+    skipped = 0
+
+    target = None
+    for d in disks:
+        if d.device_name == target_disk:
+            if mounted_devices.has_key(d.device_name):
+                print "999 ERROR: %s mounted" % d.device_name
+                sys.exit(1)
+                return
+            target = d
+            break
+        pass
+
+    if not target:
+        print "999 ERROR: no target disk found"
+        sys.exit(1)
+        pass
+
+    #
+    target.force_unmount_disk()
+
+    memsize = 1024
+    target.partclone_image = disk_image_file
+    new_id = uuidgen()
+    newhostname = "wce%s" % new_id[1:8]
+
+    print "010 Partitioning %s starting" % target.device_name
+    sys.stdout.flush()
+    try:
+        target.partition_disk(memsize, False)
+    except mkfs_failed, e:
+        print "999 ERROR: File system creation failed" % target.device_name
+        pass
+    print "020 Restore disk image"
+    sys.stdout.flush()
+    target.restore_disk_image_backend(disk_image_file)
+    print "090 Finalizing disk"
+    sys.stdout.flush()
+    target.assign_uuid_to_partitions()
+    target.mount_disk()
+    target.finalize_disk(newhostname, patch_grub_cfg)
+    print "095 Create WCE Tag"
+    sys.stdout.flush()
+    target.create_wce_tag(target.partclone_image)
+    target.unmount_disk()
+    print "100 Complete"
+    sys.stdout.flush()
+    sys.exit(0)
+    pass
+
+
 def usage(args):
     print '''install-ubuntu.py [COMMANDS] [OPTIONS]
  COMMANDS:
@@ -2563,7 +3071,13 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help"])
+        import pygtk
+        import gtk
+    except:
+        pass
+
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk="])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -2614,6 +3128,20 @@ if __name__ == "__main__":
         elif opt == "--addition-tar":
             args["addition-tar"] = arg
             pass
+        elif opt == "--gui":
+            cmd = gui_install_image
+            pass
+        elif opt == "--backend":
+            cmd = installer_backend
+            args["image-file"] = arg
+            pass
+        elif opt == "--install":
+            cmd = installer_backend
+            args["image-file"] = arg
+            pass
+        elif opt == "--target-disk":
+            args["target-disk"] = arg
+            pass
         pass
 
     if cmd == batch_install:
@@ -2637,8 +3165,27 @@ if __name__ == "__main__":
             sys.exit(2)
         pass
 
+    elif cmd == installer_backend:
+        image_file = ""
+        try:
+            image_file = args["image-file"]
+        except:
+            pass
+        if len(image_file) == 0:
+            print "Installer backend requires a image file specified."
+            sys.exit(2)
+            pass
+        target_disk = ""
+        try:
+            target_disk = args["target-disk"]
+        except:
+            pass
+        if len(target_disk) == 0:
+            print "Installer backend requires a target disk specified."
+            sys.exit(2)
+            pass
+        pass
+
     cmd(args)
     sys.exit(0)
     pass
-
-
