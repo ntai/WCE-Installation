@@ -670,7 +670,7 @@ class disk:
 
     def create_image(self):
         if self.imagename == None:
-            print "Image file name is not specified for create image. Bailing out."
+            print "999 Image file name is not specified for create image. Bailing out."
             sys.exit(2)
             pass
 
@@ -699,14 +699,106 @@ class disk:
 
         self.unmount_disk()
 
-        subprocess.call("/sbin/e2fsck -f -y %s1" % self.device_name, shell=True)
-        subprocess.call("/sbin/resize2fs -M %s1" % self.device_name, shell=True)
+        print "001 Check file system integrity. (e2fsck)"
+        sys.stdout.flush()
+        e2fsck = subprocess.Popen("/sbin/e2fsck -f -y %s1" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        e2fsck.communicate()
+        print "010 Resize file system to smallest"
+        sys.stdout.flush()
+        resize2fs = subprocess.Popen("/sbin/resize2fs -M %s1" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        resize2fs.communicate()
+        print "019 Ready for imaging"
+        sys.stdout.flush()
+
         if comp == "cat":
-            subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o %s" % (self.device_name, self.imagename), shell=True)
+            partclone = subprocess.Popen("/usr/sbin/partclone.extfs -B -c -s %s1 -o %s" % (self.device_name, self.imagename), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         else:
-            subprocess.call("/usr/sbin/partclone.extfs -c -s %s1 -o - | %s > %s" % (self.device_name, comp, self.imagename), shell=True)
+            partclone = subprocess.Popen("/usr/sbin/partclone.extfs -B -c -s %s1 -o - | %s > %s" % (self.device_name, comp, self.imagename), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
             pass
-        subprocess.call("/sbin/resize2fs %s1" % self.device_name, shell=True)
+
+        read_set = [partclone.stdout, partclone.stderr]
+        write_set = []
+
+        partclone_output = ""
+        partclone_error = ""
+
+        start_re = []
+        start_re.append(re.compile(r'Partclone [^ ]+ http://partclone.org\n'))
+        start_re.append(re.compile(r'Starting to clone device \(/dev/\w+\) to image \([^\)]+\)\n'))
+        start_re.append(re.compile(r'Reading Super Block\n'))
+        start_re.append(re.compile(r'Calculating bitmap... Please wait... [^\n]+\n[^\n]+\n[^\n]+\n'))
+        start_re.append(re.compile(r'File system:\s+EXTFS\n'))
+        start_re.append(re.compile(r'Device size:\s+[\d.]+\s+GB\n'))
+        start_re.append(re.compile(r'Space in use:\s+[\d.]+\s+GB\n'))
+        start_re.append(re.compile(r'Free Space:\s+[\d.]+\s+MB\n'))
+        start_re.append(re.compile(r'Block size:\s+\d+\s+Byte\n'))
+        start_re.append(re.compile(r'Used block :\s+\d+\n'))
+
+        progress_re = re.compile(r'\r\s+\rElapsed: (\d\d:\d\d:\d\d), Remaining: (\d\d:\d\d:\d\d), Completed:\s+(\d+.\d*)%,\s+([^\/]+)/min,')
+
+        while read_set:
+            try:
+                rlist, wlist, xlist = select.select(read_set, write_set, [])
+            except select.error, e:
+                if e.args[0] == errno.EINTR:
+                    continue
+                raise
+            
+            if partclone.stdout in rlist:
+                data = os.read(partclone.stdout.fileno(), 1024)
+                if data == "":
+                    read_set.remove(partclone.stdout)
+                    pass
+                else:
+                    # Ignore the stdout
+                    pass
+                pass
+            
+            if partclone.stderr in rlist:
+                data = os.read(partclone.stderr.fileno(), 1024)
+                if data == "":
+                    partclone.stderr.close()
+                    read_set.remove(partclone.stderr)
+                    pass
+                else:
+                    partclone_error = partclone_error + data
+                    if len(start_re) > 0:
+                        while len(start_re) > 0:
+                            m = start_re[0].match(partclone_error)
+                            if not m:
+                                break
+                            start_re = start_re[1:]
+                            partclone_error = partclone_error[len(m.group(0)):]
+                            pass
+                        if len(start_re) == 0:
+                            print "021 Start imaging"
+                            sys.stdout.flush()
+                            pass
+                        pass
+                    else:
+                        while True:
+                            m = progress_re.match(partclone_error)
+                            if not m:
+                                break
+                            partclone_error = partclone_error[len(m.group(0)):]
+                            elapsed = m.group(1)
+                            remaining = m.group(2)
+                            completed = string.atof(m.group(3))
+                            print "0%2d elapsed: %s remaining: %s" % (round(22 + 67 * completed / 100), elapsed, remaining)
+                            sys.stdout.flush()
+                            pass
+                        pass
+                    pass
+                pass
+            pass
+
+        print "089 Imaging complete"
+        print "090 Resize file system to normal"
+        sys.stdout.flush()
+        resize2fs = subprocess.Popen("/sbin/resize2fs %s1" % self.device_name, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        resize2fs.communicate()
+        print "100 Complete"
+        sys.stdout.flush()
         pass
 
 
@@ -743,7 +835,7 @@ class disk:
         installed = False
         for partition in self.partitions:
             if partition.partition_name == part1 and partition.partition_type == '83':
-                print "Partition %s has the linux partition type" % partition.partition_name
+                print "# Partition %s has the linux partition type" % partition.partition_name
                 # The parition 
                 try:
                     self.mount_disk()
@@ -845,6 +937,10 @@ class disk:
                             start_re = start_re[1:]
                             partclone_error = partclone_error[len(m.group(0)):]
                             pass
+                        if len(start_re) == 0:
+                            print "021 Start imaging"
+                            sys.stdout.flush()
+                            pass
                         pass
                     else:
                         while True:
@@ -855,7 +951,7 @@ class disk:
                             elapsed = m.group(1)
                             remaining = m.group(2)
                             completed = string.atof(m.group(3))
-                            print "0%2d elapsed: %s remaining: %s" % (round(20 + 50 * completed / 100), elapsed, remaining)
+                            print "0%2d elapsed: %s remaining: %s" % (round(22 + 48 * completed / 100), elapsed, remaining)
                             sys.stdout.flush()
                             pass
                         pass
@@ -2678,6 +2774,51 @@ def create_install_image(args):
     pass
 
 
+
+def save_install_image(args):
+    image_file = args["image-file"]
+    source_disk = args["source-disk"]
+
+    disks, usb_disks = get_disks(False, False)
+    disks = disks + usb_disks
+
+    sources = {}
+    if args.has_key("check-contents") and args["check-contents"]:
+        for disk in disks:
+            if disk.has_wce_release():
+                sources[disk.device_name] = disk
+                pass
+            pass
+
+        if len(sources.keys()) == 0:
+            print "999 Did not find any WCE Ubuntu disks."
+            sys.stdout.flush()
+            sys.exit(1)
+            pass
+        elif not sources.has_key(source_disk):
+            print "999 The disk %s has no WCE cotents." % source_disk
+            sys.stdout.flush()
+            sys.exit(1)
+            pass
+        pass
+    else:
+        for disk in disks:
+            sources[disk.device_name] = disk
+            pass
+        pass
+ 
+    if not sources.has_key(source_disk):
+        print "999 Disk %s is not detected" % source_disk
+        sys.exit(1)
+        pass
+
+    source = sources[source_disk]
+    source.imagename = image_file
+    source.create_image()
+    pass
+
+
+
 class GUIInstaller:
     ui = '''<ui>
     <menubar name="MenuBar">
@@ -2685,6 +2826,7 @@ class GUIInstaller:
         <menuitem action="Choose"/>
         <menuitem action="Refresh"/>
         <menuitem action="Install"/>
+        <menuitem action="Save"/>
         <menuitem action="Quit"/>
       </menu>
     </menubar>
@@ -2693,6 +2835,7 @@ class GUIInstaller:
       <toolitem action="Choose"/>
       <toolitem action="Refresh"/>
       <toolitem action="Install"/>
+      <toolitem action="Save"/>
       <toolitem action="Quit"/>
       <separator/>
     </toolbar>
@@ -2727,6 +2870,7 @@ class GUIInstaller:
                                  ('File', None, '_File')])
         actiongroup.add_actions([('Choose', gtk.STOCK_OPEN, '_Choose image...', None, 'Choose disk image file', self.choose_image_file_cb),
                                  ('Install', gtk.STOCK_APPLY, '_Install', None, 'Install', self.install_cb),
+                                 ('Save', gtk.STOCK_SAVE, '_Save', None, 'Install', self.save_cb),
                                  ('Refresh', gtk.STOCK_REFRESH, '_Refresh', None, 'Refresh disk status', self.refresh_disks_cb)])
         actiongroup.get_action('Quit').set_property('short-label', '_Quit')
 
@@ -2817,7 +2961,7 @@ class GUIInstaller:
 
     def choose_image_file(self):
         chooser = gtk.FileChooserDialog(title="Choose WCE Disk Image File",
-                                        action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                                        action=gtk.FILE_CHOOSER_ACTION_OPEN,
                                         buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
         chooser.set_current_folder("/var/www/wce-disk-images")
 
@@ -2829,13 +2973,21 @@ class GUIInstaller:
         chooser.destroy()
         pass
 
-    def refresh_disks_cb(self, b):
-        self.refresh_disks()
+    def clear_status(self):
         for row in range(0, 3):
             which = self.progress_table.get_iter(row)
             self.progress_table.set(which, 1, "")
             self.progress_table.set(which, 2, 0)
             pass
+        while gtk.events_pending():
+            gtk.main_iteration()
+            pass
+        pass
+
+
+    def refresh_disks_cb(self, b):
+        self.clear_status()
+        self.refresh_disks()
         pass
 
     def refresh_disks(self):
@@ -2970,6 +3122,116 @@ class GUIInstaller:
             pass
         pass
 
+    def save_cb(self, b):
+        self.save_image()
+        pass
+
+
+    def save_image(self):
+        disk_name = None
+        for disk_button in self.disk_buttons:
+            if disk_button.get_active() and disk_button.get_sensitive():
+                disk_name = "/dev/%s" % disk_button.get_label()
+                break
+            pass
+
+        if not disk_name:
+            return
+
+        chooser = gtk.FileChooserDialog(title="Save WCE Disk Image File",
+                                        action=gtk.FILE_CHOOSER_ACTION_SAVE,
+                                        buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
+        response = chooser.run()
+        if response == gtk.RESPONSE_OK:
+            image_file = chooser.get_filename()
+            self.image_file_label.set_text("Image file: %s" % image_file)
+            pass
+        chooser.destroy()
+
+        if response != gtk.RESPONSE_OK:
+            return
+
+        save_button = self.uimanager.get_widget('/Toolbar/Save')
+        save_button.set_sensitive(False)
+        self.clear_status()
+
+        cmdline = "%s --save-install-image %s --source-disk %s" % (sys.argv[0], image_file, disk_name )
+        cmd_args = shlex.split(cmdline)
+        backend = subprocess.Popen(cmd_args, bufsize=1, stderr=subprocess.PIPE, stdout=subprocess.PIPE, close_fds=True)
+        read_set = [backend.stdout, backend.stderr]
+        write_set = []
+        progress_re = re.compile(r'(\d\d\d) (.*)')
+        stderr_data = ""
+        stdout_data = ""
+        rlist = []
+
+        while backend.poll() == None:
+            try:
+                rlist, wlist, xlist = select.select(read_set, write_set, [], 0.5)
+            except select.error, e:
+                if e.args[0] == errno.EINTR:
+                    continue
+                raise
+
+            if backend.stderr in rlist:
+                data = os.read(backend.stderr.fileno(), 1024)
+                if data == "":
+                    read_set.remove(backend.stderr)
+                    pass
+                else:
+                    pass
+                pass
+
+            if backend.stdout in rlist:
+                data = os.read(backend.stdout.fileno(), 1024)
+                if data == "":
+                    read_set.remove(backend.stdout)
+                    pass
+                else:
+                    sys.stdout.write(data)
+                    stdout_data = stdout_data + data
+                    lines = stdout_data.split('\n')
+                    stdout_data = lines[-1]
+                    lines = lines[:-1]
+                    for line in lines:
+                        m = progress_re.match(line)
+                        if m:
+                            progress = string.atof(m.group(1))
+                            if progress < 20:
+                                progress_min = 0
+                                progress_max = 19
+                                row = 0
+                                pass
+                            elif progress < 90:
+                                progress_min = 20
+                                progress_max = 89
+                                row = 1
+                                pass
+                            elif progress <= 100:
+                                progress_min = 90
+                                progress_max = 100
+                                row = 2
+                                pass
+
+                            which = self.progress_table.get_iter(row)
+                            self.progress_table.set(which, 1, m.group(2))
+                            self.progress_table.set(which, 2, (100*(progress - progress_min)) / (progress_max - progress_min))
+                            if progress >= 100:
+                                break
+                            pass
+                        pass
+                    pass
+                pass
+
+            while gtk.events_pending():
+                gtk.main_iteration()
+                pass
+
+            pass
+
+        pass
+
+
     pass
 
 
@@ -3084,7 +3346,7 @@ if __name__ == "__main__":
         pass
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk="])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=" ])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -3126,6 +3388,13 @@ if __name__ == "__main__":
             cmd = create_install_image
             args["image-file"] = arg
             pass
+        elif opt == "--save-install-image":
+            cmd = save_install_image
+            args["image-file"] = arg
+            pass
+        elif opt == "--source-disk":
+            args["source-disk"] = arg
+            pass
         elif opt == "--addition":
             args["addition"] = arg
             pass
@@ -3162,6 +3431,17 @@ if __name__ == "__main__":
             sys.exit(2)
         pass
     elif cmd == create_install_image:
+        image_file = ""
+        try:
+            image_file = args["image-file"]
+        except:
+            pass
+        if len(image_file) == 0:
+            print "Create install install requires a image file specified."
+            sys.exit(2)
+        pass
+
+    elif cmd == save_install_image:
         image_file = ""
         try:
             image_file = args["image-file"]
