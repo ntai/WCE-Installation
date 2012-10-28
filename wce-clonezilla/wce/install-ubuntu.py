@@ -316,6 +316,12 @@ class disk:
         if not self.sectors:
             parted = subprocess.Popen("parted -s -m %s unit s print" % (self.device_name), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             (out, err) = parted.communicate()
+            if parted.returncode != 0:
+                if verbose:
+                    print "# disk partitioning (parted) failed."
+                    sys.stderr.write(err)
+                    pass
+                return parted.returncode
             lines = out.split("\n")
             disk_line = lines[1]
             columns = disk_line.split(":")
@@ -364,7 +370,7 @@ class disk:
             pass
         parted = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out, err) = parted.communicate()
-        pass
+        return parted.returncode
 
 
     def mkfs_partition_1(self):
@@ -529,8 +535,10 @@ class disk:
             pass
 
         retcode = subprocess.call("/sbin/e2fsck -f -y %s1" % (self.device_name), shell=True)
+        if retcode != 0:
+            return retcode
         retcode = subprocess.call("resize2fs -p %s1" % (self.device_name), shell=True)
-        pass
+        return retcode
 
 
     def finalize_disk(self, newhostname, grub_cfg_patch):
@@ -959,17 +967,31 @@ class disk:
                 pass
             pass
 
+        while partclone.poll() == None:
+            time.sleep(0.5)
+            pass
+
+        if partclone.returncode != 0:
+            print "999 restore image failed"
+            return partclone.returncode
+
         print "071 File system check (e2fsck)"
         sys.stdout.flush()
         e2fsck = subprocess.Popen("/sbin/e2fsck -f -y %s1 -C 2" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         e2fsck.communicate()
+        if e2fsck.returncode != 0:
+            print "999 file system check failed."
+            return e2fsck.returncode
         print "080 Expanding file system (resize2fs)"
         sys.stdout.flush()
         resize2fs = subprocess.Popen("resize2fs -p %s1" % (self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         resize2fs.communicate()
+        if resize2fs.returncode != 0:
+            print "999 file system resize failed (resize2fs)"
+            return resize2fs.returncode
         print "089 Expanding file system complete"
         sys.stdout.flush()
-        pass
+        return 0
 
     pass
 
@@ -2818,8 +2840,13 @@ def save_install_image(args):
     pass
 
 
+try:
+    import pygtk
+    import gtk
+except:
+    pass
 
-class GUIInstaller:
+class GUIInstaller():
     ui = '''<ui>
     <menubar name="MenuBar">
       <menu action="File">
@@ -2847,11 +2874,11 @@ class GUIInstaller:
         self.image_file = None
 
         # Create the toplevel window
-        window = gtk.Window()
-        window.connect('destroy', lambda w: gtk.main_quit())
-        window.set_size_request(500, -1)
+        self.window = gtk.Window()
+        self.window.connect('destroy', lambda w: gtk.main_quit())
+        self.window.set_size_request(500, -1)
         vbox = gtk.VBox()
-        window.add(vbox)
+        self.window.add(vbox)
 
         # Create a UIManager instance
         uimanager = gtk.UIManager()
@@ -2859,7 +2886,7 @@ class GUIInstaller:
 
         # Add the accelerator group to the toplevel window
         accelgroup = uimanager.get_accel_group()
-        window.add_accel_group(accelgroup)
+        self.window.add_accel_group(accelgroup)
 
         # Create an ActionGroup
         actiongroup = gtk.ActionGroup('DiskImageInstaller')
@@ -2870,7 +2897,7 @@ class GUIInstaller:
                                  ('File', None, '_File')])
         actiongroup.add_actions([('Choose', gtk.STOCK_OPEN, '_Choose image...', None, 'Choose disk image file', self.choose_image_file_cb),
                                  ('Install', gtk.STOCK_APPLY, '_Install', None, 'Install', self.install_cb),
-                                 ('Save', gtk.STOCK_SAVE, '_Save', None, 'Install', self.save_cb),
+                                 ('Save', gtk.STOCK_SAVE, '_Save', None, 'Save', self.save_cb),
                                  ('Refresh', gtk.STOCK_REFRESH, '_Refresh', None, 'Refresh disk status', self.refresh_disks_cb)])
         actiongroup.get_action('Quit').set_property('short-label', '_Quit')
 
@@ -2942,7 +2969,7 @@ class GUIInstaller:
 
         vbox.pack_start(treeview)
 
-        window.show_all()
+        self.window.show_all()
 
         self.refresh_disks()
         return
@@ -2960,7 +2987,8 @@ class GUIInstaller:
         pass
 
     def choose_image_file(self):
-        chooser = gtk.FileChooserDialog(title="Choose WCE Disk Image File",
+        chooser = gtk.FileChooserDialog(parent=self.window,
+                                        title="Choose WCE Disk Image File",
                                         action=gtk.FILE_CHOOSER_ACTION_OPEN,
                                         buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
         chooser.set_current_folder("/var/www/wce-disk-images")
@@ -3104,10 +3132,17 @@ class GUIInstaller:
                                 progress_max = 100
                                 row = 2
                                 pass
+                            elif progress <= 100:
+                                row = 1
+                                pass
 
                             which = self.progress_table.get_iter(row)
                             self.progress_table.set(which, 1, m.group(2))
-                            self.progress_table.set(which, 2, (100*(progress - progress_min)) / (progress_max - progress_min))
+                            if progress >= 900:
+                                self.progress_table.set(which, 2, 0)
+                            else:
+                                self.progress_table.set(which, 2, (100*(progress - progress_min)) / (progress_max - progress_min))
+                                pass
                             if progress >= 100:
                                 break
                             pass
@@ -3229,9 +3264,12 @@ class GUIInstaller:
 
             pass
 
+        if backend.returncode != 0:
+            d = gtk.MessageDialog(parent=self.window, type=gtk.MESSAGE_ERROR, buttons=gtk.BUTTONS_OK, message_format="Installation failed")
+            d.run()
+            d.destroy()
+            pass
         pass
-
-
     pass
 
 
@@ -3290,15 +3328,24 @@ def installer_backend(args):
 
     print "010 Partitioning %s starting" % target.device_name
     sys.stdout.flush()
+    returncode = None
     try:
-        target.partition_disk(memsize, False)
+        returncode = target.partition_disk(memsize, False)
     except mkfs_failed, e:
         print "999 ERROR: File system creation failed" % target.device_name
+        sys.exit(1)
+        pass
+    if returncode != 0:
+        print "999 ERROR: Partioning failed" % target.device_name
+        sys.exit(1)
         pass
     print "019 Partitioning completed"
     print "020 Restore disk image"
     sys.stdout.flush()
-    target.restore_disk_image_backend(disk_image_file)
+    returncode = target.restore_disk_image_backend(disk_image_file)
+    if returncode != 0:
+        sys.exit(1)
+        pass
     print "090 Finalizing disk"
     sys.stdout.flush()
     target.assign_uuid_to_partitions()
@@ -3339,12 +3386,6 @@ def usage(args):
 
 
 if __name__ == "__main__":
-    try:
-        import pygtk
-        import gtk
-    except:
-        pass
-
     try:
         opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=" ])
     except getopt.GetoptError, err:
