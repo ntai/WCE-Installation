@@ -1,6 +1,11 @@
 WCE Installation
 
 To make installing software to the computers for World Computer Exchange.
+Currently, WCE's computers are Ubuntu based linux + educational materials.
+If one day, we use something else, it needs to be expanded.
+However, the installer is also the WCE Boston's triage software, so it would
+be unlikely to ditch Linux/Ubuntu as it supports wide range of hardware 
+without requiring collection of drivers, like Windows.
 
 
 subdirectory:
