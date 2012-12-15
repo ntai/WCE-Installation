@@ -10,7 +10,7 @@ mount -t devpts none /dev/pts
 # Things to do
 apt-get update
 apt-get purge -y --ignore-missing defoma ttf-unifont unifont xfonts-encodings xfonts-unifont x11-common xfonts-utils w3m libxfont1 libfontenc1 libgc1c2
-apt-get install -y lm-sensors fancontrol wireless-tools python-dialog xz-utils mg smartmontools wipe pigz lzop kbd
+apt-get install -y lm-sensors fancontrol wireless-tools python-dialog xz-utils mg smartmontools wipe pigz lzop kbd partclone
 apt-get clean
 #
 rm -fR /var/cache/apt/* /var/lib/apt/lists/*
