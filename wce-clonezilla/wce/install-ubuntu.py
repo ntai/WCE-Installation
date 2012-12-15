@@ -719,9 +719,9 @@ class disk:
         sys.stdout.flush()
 
         if comp == "cat":
-            partclone = subprocess.Popen("/usr/sbin/partclone.extfs -B -c -s %s1 -o %s" % (self.device_name, self.imagename), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            partclone = subprocess.Popen("/usr/sbin/partclone.extfs -c -s %s1 -o %s" % (self.device_name, self.imagename), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         else:
-            partclone = subprocess.Popen("/usr/sbin/partclone.extfs -B -c -s %s1 -o - | %s > %s" % (self.device_name, comp, self.imagename), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            partclone = subprocess.Popen("/usr/sbin/partclone.extfs -c -s %s1 -o - | %s > %s" % (self.device_name, comp, self.imagename), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
             pass
 
         read_set = [partclone.stdout, partclone.stderr]
@@ -888,9 +888,9 @@ class disk:
             pass
 
         if decomp == "cat":
-            partclone = subprocess.Popen("partclone.ext4 -B -r -s %s -o %s1" % (partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            partclone = subprocess.Popen("partclone.ext4 -r -s %s -o %s1" % (partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         else:
-            partclone = subprocess.Popen("%s '%s' | partclone.ext4 -B -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            partclone = subprocess.Popen("%s '%s' | partclone.ext4 -r -s - -o %s1" % (decomp, partclone_image_file, self.device_name), shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
             pass
 
         read_set = [partclone.stdout, partclone.stderr]
