@@ -1,25 +1,25 @@
-deb http://us.archive.ubuntu.com/ubuntu/ maverick main restricted
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick main restricted
-deb http://us.archive.ubuntu.com/ubuntu/ maverick-updates main restricted
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick-updates main restricted
-deb http://us.archive.ubuntu.com/ubuntu/ maverick universe
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick universe
-deb http://us.archive.ubuntu.com/ubuntu/ maverick-updates universe
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick-updates universe
-deb http://us.archive.ubuntu.com/ubuntu/ maverick multiverse
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick multiverse
-deb http://us.archive.ubuntu.com/ubuntu/ maverick-updates multiverse
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick-updates multiverse
-deb http://us.archive.ubuntu.com/ubuntu/ maverick-backports main restricted universe multiverse
-deb-src http://us.archive.ubuntu.com/ubuntu/ maverick-backports main restricted universe multiverse
+deb http://old-releases.ubuntu.com/ubuntu/ maverick main restricted
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick main restricted
+deb http://old-releases.ubuntu.com/ubuntu/ maverick-updates main restricted
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick-updates main restricted
+deb http://old-releases.ubuntu.com/ubuntu/ maverick universe
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick universe
+deb http://old-releases.ubuntu.com/ubuntu/ maverick-updates universe
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick-updates universe
+deb http://old-releases.ubuntu.com/ubuntu/ maverick multiverse
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick multiverse
+deb http://old-releases.ubuntu.com/ubuntu/ maverick-updates multiverse
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick-updates multiverse
+deb http://old-releases.ubuntu.com/ubuntu/ maverick-backports main restricted universe multiverse
+deb-src http://old-releases.ubuntu.com/ubuntu/ maverick-backports main restricted universe multiverse
 deb http://archive.canonical.com/ubuntu maverick partner
 deb-src http://archive.canonical.com/ubuntu maverick partner
-deb http://security.ubuntu.com/ubuntu maverick-security main restricted
-deb-src http://security.ubuntu.com/ubuntu maverick-security main restricted
-deb http://security.ubuntu.com/ubuntu maverick-security universe
-deb-src http://security.ubuntu.com/ubuntu maverick-security universe
-deb http://security.ubuntu.com/ubuntu maverick-security multiverse
-deb-src http://security.ubuntu.com/ubuntu maverick-security multiverse
+deb http://old-releases.ubuntu.com/ubuntu maverick-security main restricted
+deb-src http://old-releases.ubuntu.com/ubuntu maverick-security main restricted
+deb http://old-releases.ubuntu.com/ubuntu maverick-security universe
+deb-src http://old-releases.ubuntu.com/ubuntu maverick-security universe
+deb http://old-releases.ubuntu.com/ubuntu maverick-security multiverse
+deb-src http://old-releases.ubuntu.com/ubuntu maverick-security multiverse
 deb http://drbl.sourceforge.net/drbl-core drbl stable
 #deb http://extras.ubuntu.com/ubuntu maverick main
 #deb-src http://extras.ubuntu.com/ubuntu maverick main

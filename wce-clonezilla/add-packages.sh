@@ -13,7 +13,7 @@ apt-get purge -y --ignore-missing defoma ttf-unifont unifont xfonts-encodings xf
 apt-get install -y lm-sensors fancontrol wireless-tools python-dialog xz-utils mg smartmontools wipe pigz lzop kbd partclone
 apt-get clean
 #
-rm -fR /var/cache/apt/* /var/lib/apt/lists/*
+rm -fR /var/cache/apt/* /var/lib/apt/lists/* /tmp/*
 dpkg -l > /tmp/dpkg-list
 #
 umount /proc || umount -lf /proc
