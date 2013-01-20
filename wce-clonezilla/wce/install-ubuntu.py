@@ -75,10 +75,25 @@ cp /boot/grub/grub.cfg /tmp/grub.cfg
 sed "s/root='(hd.,1)'/root='(hd0,1)'/g" /tmp/grub.cfg > /boot/grub/grub.cfg
 '''
 
+# PCI vendors. use lower case
+PCI_VENDOR_SIS = "1039"
+PCI_VENDOR_VIA = "1106"
+PCI_VENDOR_NVIDIA = "10de"
+PCI_VENDOR_ATI = "1002"
+
+# Ethernet device blacklist
 #
 # SIS 191 gigabit controller 1039:0191 does not work.
 # 
-ethernet_card_blacklist = { "1039" : { "0191" : True } }
+
+ethernet_device_blacklist = { PCI_VENDOR_SIS : { "0191" : True } }
+
+#
+# Video device blacklist
+# 
+# Some VIA UniChrome is not supported by OpenChrome driver
+#
+video_device_blacklist = { PCI_VENDOR_VIA : { "7205" : True } }
 
 
 nvidia_xorg_conf = '''
@@ -175,18 +190,25 @@ def detect_video_cards():
     n_nvidia = 0
     n_ati = 0
     n_vga = 0
+    n_black_vga = 0
     out = get_lspci_nm_output()
+    blacklisted_videos = []
     for line in out.split('\n'):
         m = lspci_nm_re.match(line)
         if m:
+            # Display controller
             if m.group(2) == '0300':
                 vendor_id = m.group(3).lower()
-                    # Display controller
-                if vendor_id == '10de':
+                device_id = m.group(4).lower()
+
+                if video_device_blacklist.has_key(vendor_id) and video_device_blacklist[vendor_id].has_key(device_id):
+                    blacklisted_videos.append(get_lspci_device_desc(m.group(1)))
+                    n_black_vga = n_black_vga + 1
+                elif vendor_id == PCI_VENDOR_NVIDIA:
                     # nVidia
                     n_nvidia = n_nvidia + 1
                     pass
-                elif vendor_id == '1002':
+                elif vendor_id == PCI_VENDOR_ATI:
                     # ATI
                     n_ati = n_ati + 1
                     pass
@@ -196,7 +218,7 @@ def detect_video_cards():
                 pass
             pass
         pass
-    return (n_nvidia, n_ati, n_vga)
+    return (n_nvidia, n_ati, n_vga, n_black_vga, blacklisted_videos)
 
 
 def uuidgen():
@@ -624,7 +646,7 @@ class disk:
         # It's particulary important now since Ubuntu developers
         # screwed up the nVidia driver.
 
-        n_nvidia, n_ati, n_vga = detect_video_cards()
+        (n_nvidia, n_ati, n_vga, n_black_vga, blacklisted_videos) = detect_video_cards()
         
         if (n_ati > 0) or (n_vga > 0):
             to_do = to_do + "apt-get -q -y --force-yes purge `dpkg --get-selections | cut -f 1 | grep -v xorg | grep nvidia-`\n"
@@ -1661,7 +1683,7 @@ def detect_ethernet():
                 device_id = m.group(4).lower()
                 
                 try:
-                    if ethernet_card_blacklist[vendor_id][device_id]:
+                    if ethernet_device_blacklist[vendor_id][device_id]:
                         blacklisted_cards.append(get_lspci_device_desc(m.group(1)))
                         pass
                     pass
@@ -2017,7 +2039,7 @@ def triage(output):
         total_memory = get_memory_size()
         pass
     disks, usb_disks = get_disks(True, True)
-    n_nvidia, n_ati, n_vga = detect_video_cards()
+    (n_nvidia, n_ati, n_vga, n_black_vga, blacklisted_videos) = detect_video_cards()
     (ethernet_detected, bad_ethernet_cards, eth_devices) = detect_ethernet()
     sound_dev = detect_sound_device()
     triage_result = True
@@ -2094,6 +2116,12 @@ def triage(output):
 
     if (n_nvidia + n_ati + n_vga) <= 0:
         triage_result = False
+        if len(blacklisted_videos) > 0:
+            print >> output, "Remove or disable following video(s) because known to not work"
+            for video in blacklisted_videos:
+                print >> output, "    " + video
+                pass
+            pass
         pass
 
     if not len(eth_devices) > 0:
@@ -2101,7 +2129,7 @@ def triage(output):
         triage_result = False
         pass
     if len(bad_ethernet_cards) > 0:
-        print >> output, "Remove or disable followings cards because known to not work"
+        print >> output, "Remove or disable following cards because known to not work"
         for card in bad_ethernet_cards:
             print >> output, "    " + card
             pass
