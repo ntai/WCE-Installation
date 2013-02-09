@@ -61,6 +61,7 @@ fsimage: extract-cd add-packages.sh wce/sources.list
 	sudo make fsimage/etc/apt/sources.list
 	sudo make fsimage/etc/resolv.conf
 	sudo ./add-packages.sh
+	sudo ./slim-fsimage.sh
 
 
 fsimage/wce.py: wce/install-ubuntu.py
