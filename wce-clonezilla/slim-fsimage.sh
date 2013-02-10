@@ -86,5 +86,5 @@ sudo rm -fR fsimage/usr/share/calendar fsimage/usr/share/doc fsimage/usr/share/d
  fsimage/usr/share/locale/bn \
  fsimage/usr/share/locale/rm \
  fsimage/usr/share/locale/nds \
- fsimage/var/log/* fsimage/var/cache/* fsimage/var/apt/* fsimage/var/dpkg/* 
+ fsimage/var/log/* fsimage/var/apt/* fsimage/var/dpkg/* 
 
