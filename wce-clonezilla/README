@@ -1,0 +1,31 @@
+WCE Clonezilla
+
+The WCE triage/installer CD is based on the Clonezilla CD.
+make downloads/extracts/modfies the Clonezilla CD and repackages
+as the WCE Clonezilla CD.
+
+The resulting CD contains WCE's triage/installer Python script,
+"/wce.py", which is renamed from "install-ubuntu.py".
+
+make targets:
+"make" makes a modified CD.
+
+"make debian"
+"make prerequisits"
+First time you run this, plase run "make debian prerequisits".
+It installs necessary apt-key and packages.
+
+"make tftp"
+After making CD, you can set up the machine for installation
+server. The squash file system image is copied to /var/lib/tftpboot.
+It may install syslinux if needed.
+
+
+BUGS:
+The make process is not problem free.
+
+depending on the Ubuntu version, some packages are organized
+differently. I think the right thing to do is to move the
+whole thing to the newest LTS based, and leave the old LTS
+based as a branch in GIT. At the moment (2013-03), I have not
+get around to do so.
