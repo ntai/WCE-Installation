@@ -29,6 +29,13 @@ This area needs the installation automation and documentation.
 A bootstrapper is provided but not complete by any means.
 
 
+* Mini Installation Server
+
+Bufferlo's LinkStation running Debian is working as an installation server.
+The maintainance is all by hand. 
+This also needs either a good documentation or automation of updates.
+
+
 * Payload update procedure
 
 Needs a doc write up how to create/update/maintain the disk image.
