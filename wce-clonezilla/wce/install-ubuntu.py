@@ -1,12 +1,26 @@
 #!/usr/bin/env python
-
+#
+# install-ubuntu.py
+# is the installer/imager/triage Python script for WCE.
+#
+# The idea behind this is because, we want to have a single triage/installer
+# CD. 
+# For the triage, it picks up the machine vitals such as RAM, optical dirve
+# spec, hard disk capacity, CPU class designation. 
+# It also does the network detection by running dhclient so that it can
+# talk to the router.
+# 
+# If you stop there, then it's triage. If you proceed, it continues to
+# install the ubuntu image using partclone.
+# 
+#
 import os, sys, subprocess, re, string, getpass, time, shutil, uuid, urllib, select, urlparse, datetime, getopt, traceback
 try:
     import shlex
 except:
     pass
 
-installer_version = "0.61"
+installer_version = "0.64"
 
 wce_release_file = '/mnt/wce_install_target/etc/wce-release'
 
@@ -259,6 +273,15 @@ def is_network_connected():
         connected = string.atoi(carrier_state) == 1
     except:
         pass
+    if not connected:
+        try:
+            carrier = open("/sys/class/net/eth1/carrier")
+            carrier_state = carrier.read()
+            carrier.close()
+            connected = string.atoi(carrier_state) == 1
+        except:
+            pass
+        pass
     return connected
             
 
@@ -271,6 +294,9 @@ class partition:
     pass
 
 
+#
+# disk class represents a disk
+#
 class disk:
     def __init__(self):
         self.device_name = None
@@ -2024,7 +2050,7 @@ def detect_cpu_type():
     return cpu_class, cpu_cores, max_processor + 1, cpu_vendor, model_name, bogomips, cpu_speed
 
 
-def triage(output):
+def triage(output, live_system = False):
     global mounted_devices
     cpu_class, cpu_cores, n_processors, cpu_vendor, model_name, bogomips, cpu_speed = detect_cpu_type()
     # Try getting memory from dmidecode
@@ -2141,6 +2167,230 @@ def triage(output):
         pass
     
     return triage_result, disks, usb_disks
+
+
+# Live triage for post installation triage
+def live_triage(cmd):
+    if os.getuid() != 0:
+        subprocess.call("gksudo -- xterm -geometry 132x40 -e python %s --live-triage-body" % cmd["argv0"], shell=True)
+        pass
+    else:
+        subprocess.call("xterm -geometry 132x40 -e python %s --live-triage-body" % cmd["argv0"], shell=True)
+        pass
+    pass
+
+
+def live_triage_body(cmd):
+    try:
+        live_triage_body_impl(cmd)
+    except:
+        log = open("/tmp/triage-log.txt", "w")
+        traceback.print_exc(log)
+        log.close()
+        pass    
+    pass
+
+
+def read_file(filepath):
+    content = None
+    try:
+        f = open(filepath)
+        content = f.read()
+        f.close()
+    except:
+        pass
+    return content
+    
+
+def compare_files(file1, file2):
+    return read_file(file1) == read_file(file2)
+
+
+def live_triage_body_impl(cmd):
+    global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
+
+    dialog_width = 100
+    dialog_height = 32
+
+    triage_output = open(triage_txt, "w")
+
+    import dialog
+    dlg = dialog.Dialog()
+    dialog_rc = open(dialog_rc_filename, "w")
+    dialog_rc.write(dialog_rc_failure_template)
+    dialog_rc.close()
+    failure_dlg = dialog.Dialog(DIALOGRC=dialog_rc_filename)
+
+    has_network = None
+    if is_network_connected():
+        dlg.gauge_start("Thank you for triaging. Please fill the form.", title="Checking network")
+        for i in range(0, 9):
+            time.sleep(1)
+            has_network = get_router_ip_address() != None
+            if has_network:
+                break
+            pass
+        dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
+        time.sleep(1)
+        dlg.gauge_stop()
+        pass
+            
+    triage_result = True
+
+    while True:
+        # I do this extra work so that I can have a temp file.
+        try:
+            triage_result, disks, usb_disks = triage(triage_output, live_system=True)
+        except:
+            traceback.print_exc(triage_output)
+            pass
+        triage_output.flush()
+
+        result_displayed = False
+
+        btitle = "Triage Output"
+        triage_dlg = dlg
+
+        if not triage_result:
+            btitle = "Triage Output - Failed"
+            triage_dlg = failure_dlg
+            pass
+        dlg = triage_dlg
+        triage_output.close()
+
+        try:
+            if (not has_network) or (not triage_result):
+                triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+                pass
+            else:
+                triage_output = open(triage_txt)
+                report = triage_output.read()
+                triage_output.close()
+                triage_dlg.infobox(report, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+                pass
+            result_displayed = True
+        except:
+            triage_output = open(triage_txt, "a+")
+            traceback.print_exc(triage_output)
+            triage_output.close()
+            pass        
+
+        # See the disks contain WCE Ubuntu
+        triage_output = open(triage_txt, "a+")
+        if os.path.exists("/etc/wce-release"):
+            print >> triage_output, "The machine has the WCE Ubuntu installed."
+        else:
+            print >> triage_output, "The machine does not have the WCE Ubuntu installed. -- FAIL"
+            triage_result = False
+            pass
+
+        # Network working?
+        has_network = get_router_ip_address() != None
+        (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
+
+        while not has_network:
+            triage_dlg.infobox("\nPlease connect to a router.\n", width=dialog_width, height=dialog_height/2, cr_wrap=1, backtitle=btitle)
+            has_network = get_router_ip_address() != None
+            if has_network:
+                break
+            time.sleep(5)
+            pass
+
+        print >> triage_output, "Live network is working."
+        triage_output.close()
+        triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+
+        #
+        # Checking optical
+        #
+
+        optical_result = True
+        triage_output = open(triage_txt, "a+")
+        wce_path = os.path.dirname(cmd["argv0"])
+        live_path = os.path.join(wce_path, "..", "live")
+        initrd_path = os.path.join(live_path, "initrd.img")
+        vmlinuz_path = os.path.join(live_path, "vmlinuz")
+
+        msg = '''*********************************************
+    Checking CD. Step 1
+    This may take some time.
+*********************************************
+'''
+        triage_dlg.infobox(msg, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+
+        try:
+            subprocess.check_call("md5sum %s | cut -d ' ' -f 1 > /tmp/initrd.img.md5" % initrd_path, shell=True)
+        except:
+            print >> triage_output, "Reading %s on CD did not succeed. -- FAIL\n" % initrd_path
+            optical_result = False
+            traceback.print_exc(triage_output)
+            pass
+
+        if not compare_files("/tmp/initrd.img.md5", os.path.join(wce_path, "initrd.img.md5")):
+            print >> triage_output, "Checksum %s on CD did not succeed. -- FAIL\n" % initrd_path
+            optical_result = False
+            pass
+
+        msg = '''*********************************************
+    Checking CD. Step 2
+    This may take some time.
+*********************************************
+'''
+        triage_dlg.infobox(msg, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+        triage_output.flush()
+
+        try:
+            subprocess.check_call("md5sum %s | cut -d ' ' -f 1 > /tmp/vmlinuz.md5" % vmlinuz_path, shell=True)
+        except:
+            print >> triage_output, "Reading %s on CD did not succeed. -- FAIL" % vmlinuz_path
+            optical_result = False
+            traceback.print_exc(triage_output)
+            pass
+            if status != 0:
+                pass
+            pass
+
+        if not compare_files("/tmp/vmlinuz.md5", os.path.join(wce_path, "vmlinuz.md5")):
+            print >> triage_output, "Checksum %s on CD did not succeed. -- FAIL" % vmlinuz_path
+            optical_result = False
+            pass
+
+        if optical_result:
+            print >> triage_output, "Checking CD passed."
+            pass
+        else:
+            triage_result = False
+            pass
+
+        if not triage_result:
+            btitle = "Triage Output - Failed"
+            triage_dlg = failure_dlg
+            pass
+
+        has_network = get_router_ip_address() != None
+        if has_network:
+            # If it's connected to a network.
+            # it's probably hooked up to a random router.
+            print >> triage_output, "Triage is complete. If it passes the triage, it's ready to ship.\n"
+            triage_output.close()
+            triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle="Triage conclusion")
+            pass
+        else:
+            # It's an island triage
+            if triage_result:
+                print >> triage_output, "Triage complete. Ready to install."
+            else:
+                print >> triage_output, "The machine did not pass the triage. Please fix it." 
+                pass
+            triage_output.close()
+            triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+            pass
+
+        triage_dlg.msgbox("Please turn off the computer.")
+
+        # Just fall through
+        break
+    pass
 
 
 def detect_sensor_modules(modules_path):
@@ -2280,7 +2530,7 @@ def triage_install():
     while True:
         # I do this extra work so that I can have a temp file.
         triage_output = open(triage_txt, "w")
-        triage_result, disks, usb_disks = triage(triage_output)
+        triage_result, disks, usb_disks = triage(triage_output, live_system=False)
         triage_output.close()
         result_displayed = False
 
@@ -2407,8 +2657,10 @@ def triage_install():
             pass
 
         # If there is disk images, it's connected to a server
-        # Proceed to installation
-        if len(disk_images) > 0:
+        # Proceed to installation.
+	# Also, if there is a USB disk (USB stick), maybe, 
+	# there is a installation image.
+        if len(disk_images) > 0 or (len(usb_disks) > 0):
             break
 
         # If it's hooked up to a network, then I'm very done.
@@ -3415,7 +3667,7 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=" ])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-body" ])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -3486,6 +3738,14 @@ if __name__ == "__main__":
             pass
         elif opt == "--target-disk":
             args["target-disk"] = arg
+            pass
+        elif opt == "--live-triage":
+            cmd = live_triage
+            args["argv0"] = sys.argv[0]
+            pass
+        elif opt == "--live-triage-body":
+            cmd = live_triage_body
+            args["argv0"] = sys.argv[0]
             pass
         pass
 
