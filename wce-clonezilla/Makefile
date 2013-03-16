@@ -26,7 +26,7 @@ LIVEPATCHES := \
  fsimage/opt/drbl/conf/drbl.conf \
  fsimage/etc/apt/sources.list \
  fsimage/etc/network/interfaces \
- fsimage/etc/resolv.conf 
+ fsimage/etc/resolv.conf
 
 
 SOURCES := \
@@ -35,6 +35,11 @@ SOURCES := \
  extract-cd/isolinux/wcebg1.png \
  extract-cd/isolinux/wcebg2.png \
  extract-cd/isolinux/wceboot.png \
+ extract-cd/wce \
+ extract-cd/wce/live-triage \
+ extract-cd/wce/install-ubuntu.py \
+ extract-cd/wce/initrd.img.md5 \
+ extract-cd/wce/vmlinuz.md5
  ${DISKIMAGES}
 
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
@@ -93,6 +98,24 @@ fsimage/etc/network/interfaces: wce/interfaces
 
 fsimage/etc/resolv.conf: /etc/resolv.conf
 	sudo cp -p $< $@
+
+
+extract-cd/wce:
+	sudo mkdir -p $@
+
+extract-cd/wce/live-triage: wce/live-triage
+	sudo install -m 755 $< $@
+
+extract-cd/wce/initrd.img.md5: extract-cd/live/initrd.img
+	md5sum $< | cut -d ' ' -f 1 > /var/tmp/initrd.img.md5
+	sudo cp /var/tmp/initrd.img.md5 $@
+
+extract-cd/wce/vmlinuz.md5: extract-cd/live/vmlinuz
+	md5sum $< | cut -d ' ' -f 1 > /var/tmp/vmlinuz.md5
+	sudo cp /var/tmp/vmlinuz.md5 $@
+
+extract-cd/wce/install-ubuntu.py: wce/install-ubuntu.py
+	sudo install -m 755 $< $@
 
 extract-cd/isolinux/%.png: wce/%.png
 	sudo cp $< $@
