@@ -1020,7 +1020,7 @@ class disk:
             pass
 
         if partclone.returncode != 0:
-            print "999 restore image failed"
+            print "999 restore image failed %s" % partclone_error
             return partclone.returncode
 
         print "071 File system check (e2fsck)"
@@ -1494,7 +1494,7 @@ def get_disks(list_mounted_disks, verbose):
             pass
         else:
             if verbose:
-                print "Did not find the disk %s" % disk_name
+                print "# Did not find the disk %s" % disk_name
                 pass
             pass
         pass
@@ -3207,7 +3207,7 @@ class GUIInstaller():
         buttonbox = gtk.HButtonBox()
         self.disk_buttons = []
         
-        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf" ]:
+        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg", "sdh", "sdi", "sdj" ]:
             disk_button = gtk.CheckButton(name)
             self.disk_buttons.append(disk_button)
             disk_button.set_active(True)
@@ -3412,8 +3412,8 @@ class GUIInstaller():
                                 progress_max = 100
                                 row = 2
                                 pass
-                            elif progress <= 100:
-                                row = 1
+                            elif progress > 900:
+                                row = 2
                                 pass
 
                             which = self.progress_table.get_iter(row)
