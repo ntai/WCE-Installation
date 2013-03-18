@@ -1020,7 +1020,7 @@ class disk:
             pass
 
         if partclone.returncode != 0:
-            print "999 restore image failed"
+            print "999 restore image failed %s" % partclone_error
             return partclone.returncode
 
         print "071 File system check (e2fsck)"
@@ -1494,7 +1494,7 @@ def get_disks(list_mounted_disks, verbose):
             pass
         else:
             if verbose:
-                print "Did not find the disk %s" % disk_name
+                print "# Did not find the disk %s" % disk_name
                 pass
             pass
         pass
@@ -2180,7 +2180,18 @@ def live_triage(cmd):
     pass
 
 
+# Called when I'm root
 def live_triage_body(cmd):
+    try:
+        import dialog
+    except:
+        # I need to install the dialog package
+        wce_path = os.path.dirname(cmd["argv0"])
+        python_dialog_package = os.path.join(wce_path, "python-dialog_2.7-1_all.deb")
+        subprocess.call("dpkg -i %s python_dialog_package", shell=True)
+        import dialog
+        pass
+
     try:
         live_triage_body_impl(cmd)
     except:
@@ -2214,7 +2225,6 @@ def live_triage_body_impl(cmd):
 
     triage_output = open(triage_txt, "w")
 
-    import dialog
     dlg = dialog.Dialog()
     dialog_rc = open(dialog_rc_filename, "w")
     dialog_rc.write(dialog_rc_failure_template)
@@ -3207,7 +3217,7 @@ class GUIInstaller():
         buttonbox = gtk.HButtonBox()
         self.disk_buttons = []
         
-        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf" ]:
+        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg", "sdh", "sdi", "sdj" ]:
             disk_button = gtk.CheckButton(name)
             self.disk_buttons.append(disk_button)
             disk_button.set_active(True)
@@ -3412,8 +3422,8 @@ class GUIInstaller():
                                 progress_max = 100
                                 row = 2
                                 pass
-                            elif progress <= 100:
-                                row = 1
+                            elif progress > 900:
+                                row = 2
                                 pass
 
                             which = self.progress_table.get_iter(row)
