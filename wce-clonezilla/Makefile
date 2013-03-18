@@ -3,6 +3,8 @@
 #
 CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 
+PYTHON_DIALOG := python-dialog_2.7-1_all.deb
+
 WCEVERSION := $(shell cat version)
 ISOTARGET := wce-clonezilla-v${WCEVERSION}-lite.iso
 #UDF_FLAGS := -udf -allow-limited-size -iso-level 3
@@ -39,7 +41,8 @@ SOURCES := \
  extract-cd/wce/live-triage \
  extract-cd/wce/install-ubuntu.py \
  extract-cd/wce/initrd.img.md5 \
- extract-cd/wce/vmlinuz.md5
+ extract-cd/wce/vmlinuz.md5 \
+ extract-cd/wce/${PYTHON_DIALOG}
  ${DISKIMAGES}
 
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
@@ -47,6 +50,8 @@ SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
 $(CLONEZILLA_LIVE) :
 	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/20110113-maverick/clonezilla-live-20110113-maverick.iso -O $@
 
+$(PYTHON_DIALOG) :
+	wget http://ubuntu.media.mit.edu/ubuntu//pool/universe/p/pythondialog/python-dialog_2.7-1_all.deb -O $@
 
 extract-cd: $(CLONEZILLA_LIVE)
 	-sudo mkdir clonezilla_live
@@ -116,6 +121,9 @@ extract-cd/wce/vmlinuz.md5: extract-cd/live/vmlinuz
 
 extract-cd/wce/install-ubuntu.py: wce/install-ubuntu.py
 	sudo install -m 755 $< $@
+
+extract-cd/wce/$(PYTHON_DIALOG): $(PYTHON_DIALOG)
+	sudo install -m 555 $< $@
 
 extract-cd/isolinux/%.png: wce/%.png
 	sudo cp $< $@

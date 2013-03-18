@@ -2180,7 +2180,18 @@ def live_triage(cmd):
     pass
 
 
+# Called when I'm root
 def live_triage_body(cmd):
+    try:
+        import dialog
+    except:
+        # I need to install the dialog package
+        wce_path = os.path.dirname(cmd["argv0"])
+        python_dialog_package = os.path.join(wce_path, "python-dialog_2.7-1_all.deb")
+        subprocess.call("dpkg -i %s python_dialog_package", shell=True)
+        import dialog
+        pass
+
     try:
         live_triage_body_impl(cmd)
     except:
@@ -2214,7 +2225,6 @@ def live_triage_body_impl(cmd):
 
     triage_output = open(triage_txt, "w")
 
-    import dialog
     dlg = dialog.Dialog()
     dialog_rc = open(dialog_rc_filename, "w")
     dialog_rc.write(dialog_rc_failure_template)
