@@ -20,7 +20,7 @@ try:
 except:
     pass
 
-installer_version = "0.64"
+installer_version = "0.65"
 
 wce_release_file = '/mnt/wce_install_target/etc/wce-release'
 
@@ -2172,33 +2172,11 @@ def triage(output, live_system = False):
 # Live triage for post installation triage
 def live_triage(cmd):
     if os.getuid() != 0:
-        subprocess.call("gksudo -- xterm -geometry 132x40 -e python %s --live-triage-body" % cmd["argv0"], shell=True)
+        subprocess.call("gksudo -- xterm -geometry 132x40 -e python %s --live-triage-step-1" % cmd["argv0"], shell=True)
         pass
     else:
-        subprocess.call("xterm -geometry 132x40 -e python %s --live-triage-body" % cmd["argv0"], shell=True)
+        subprocess.call("xterm -geometry 132x40 -e python %s --live-triage-step-1" % cmd["argv0"], shell=True)
         pass
-    pass
-
-
-# Called when I'm root
-def live_triage_body(cmd):
-    try:
-        import dialog
-    except:
-        # I need to install the dialog package
-        wce_path = os.path.dirname(cmd["argv0"])
-        python_dialog_package = os.path.join(wce_path, "python-dialog_2.7-1_all.deb")
-        subprocess.call("dpkg -i %s python_dialog_package", shell=True)
-        import dialog
-        pass
-
-    try:
-        live_triage_body_impl(cmd)
-    except:
-        log = open("/tmp/triage-log.txt", "w")
-        traceback.print_exc(log)
-        log.close()
-        pass    
     pass
 
 
@@ -2216,9 +2194,27 @@ def read_file(filepath):
 def compare_files(file1, file2):
     return read_file(file1) == read_file(file2)
 
+# Called when I'm root
+def live_triage_step1(cmd):
+    try:
+        import dialog
+    except:
+        # I need to install some packages from "wce"
+        wce_path = os.path.dirname(cmd["argv0"])
+        packages = []
+        for maybe_package in os.listdir(wce_path):
+            if os.path.splitext(maybe_package)[1] == ".deb":
+                packages.append(os.path.join(wce_path, maybe_package))
+                pass
+            pass
+        subprocess.call("dpkg -i %s" % " ".join(packages), shell=True)
+        pass
+    subprocess.call("python %s --live-triage-step-2" % cmd["argv0"], shell=True)
+    pass
 
-def live_triage_body_impl(cmd):
+def live_triage_step2(cmd):
     global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
+    import dialog
 
     dialog_width = 100
     dialog_height = 32
@@ -3677,7 +3673,7 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-body" ])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-1", "live-triage-step-2" ])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -3753,8 +3749,12 @@ if __name__ == "__main__":
             cmd = live_triage
             args["argv0"] = sys.argv[0]
             pass
-        elif opt == "--live-triage-body":
-            cmd = live_triage_body
+        elif opt == "--live-triage-step-1":
+            cmd = live_triage_step1
+            args["argv0"] = sys.argv[0]
+            pass
+        elif opt == "--live-triage-step-2":
+            cmd = live_triage_step2
             args["argv0"] = sys.argv[0]
             pass
         pass
