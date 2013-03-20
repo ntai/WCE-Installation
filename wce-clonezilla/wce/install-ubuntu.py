@@ -20,7 +20,7 @@ try:
 except:
     pass
 
-installer_version = "0.65"
+installer_version = "0.66"
 
 wce_release_file = '/mnt/wce_install_target/etc/wce-release'
 
@@ -2172,10 +2172,10 @@ def triage(output, live_system = False):
 # Live triage for post installation triage
 def live_triage(cmd):
     if os.getuid() != 0:
-        subprocess.call("gksudo -- xterm -geometry 132x40 -e python %s --live-triage-step-1" % cmd["argv0"], shell=True)
+        subprocess.call("gksudo -- xterm -geometry 132x40 -e python %s --live-triage" % cmd["argv0"], shell=True)
         pass
     else:
-        subprocess.call("xterm -geometry 132x40 -e python %s --live-triage-step-1" % cmd["argv0"], shell=True)
+        live_triage_step1(cmd)
         pass
     pass
 
@@ -2198,6 +2198,7 @@ def compare_files(file1, file2):
 def live_triage_step1(cmd):
     try:
         import dialog
+        live_triage_step2(cmd)
     except:
         # I need to install some packages from "wce"
         wce_path = os.path.dirname(cmd["argv0"])
@@ -2208,9 +2209,10 @@ def live_triage_step1(cmd):
                 pass
             pass
         subprocess.call("dpkg -i %s" % " ".join(packages), shell=True)
+        subprocess.call("python %s --live-triage-step-2" % cmd["argv0"], shell=True)
         pass
-    subprocess.call("python %s --live-triage-step-2" % cmd["argv0"], shell=True)
     pass
+
 
 def live_triage_step2(cmd):
     global mounted_devices, mounted_partitions, wce_disk_image_path, dlg
@@ -3560,6 +3562,16 @@ class GUIInstaller():
 
 
 def gui_install_image(args):
+    if os.getuid() == 0:
+        rooted_gui_install_image(args)
+        pass
+    else:
+        # Rerun the script with sudo
+        subprocess.call("gksudo -- python %s --gui" % args["argv0"], shell=True)
+        pass
+    pass
+
+def rooted_gui_install_image(args):
     GUIInstaller()
     gtk.main()
     return
@@ -3673,7 +3685,7 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-1", "live-triage-step-2" ])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -3733,6 +3745,7 @@ if __name__ == "__main__":
             pass
         elif opt == "--gui":
             cmd = gui_install_image
+            args["argv0"] = sys.argv[0]
             pass
         elif opt == "--backend":
             cmd = installer_backend
@@ -3747,10 +3760,6 @@ if __name__ == "__main__":
             pass
         elif opt == "--live-triage":
             cmd = live_triage
-            args["argv0"] = sys.argv[0]
-            pass
-        elif opt == "--live-triage-step-1":
-            cmd = live_triage_step1
             args["argv0"] = sys.argv[0]
             pass
         elif opt == "--live-triage-step-2":
