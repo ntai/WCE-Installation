@@ -287,10 +287,46 @@ def is_network_connected():
 
 class partition:
     def __init__(self):
+        self.device_name = None
         self.partition_name = None
         self.partition_type = None
         self.partition_number = None
         pass
+
+    def start_mkfs(self, name):
+        mkfs = None
+        if self.partition_type == 'c':
+            mkfs = subprocess.Popen(["mkfs.vfat", "-F", "32", "-n", name, self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        elif self.partition_type == '83':
+            mkfs = subprocess.Popen(["mkfs.ext2", "-b", "4096", "-L", name, self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        else:
+            pass
+        self.partition_name = name
+        return mkfs
+
+
+    def unmount(self):
+        unmount = subprocess.Popen(["/bin/umount", "-f", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = unmount.communicate()
+        pass
+
+    def get_mount_point(self):
+        return "/media/%s" % self.partition_name
+    
+    def mount(self):
+        mount_point = self.get_mount_point()
+        if not os.path.exists(mount_point):
+            os.mkdir(mount_point)
+            pass
+        subprocess.call(["/bin/mount", self.device_name, mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pass
+
+
+    def install_bootloader(self):
+        syslinux = subprocess.Popen(["/usr/bin/syslinux", "-maf", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = syslinux.communicate()
+        pass
+
     pass
 
 
@@ -303,6 +339,7 @@ class disk:
         self.partitions = []
         self.disk_type = None
         self.size = None
+        self.byte_size = None
         self.sectors = None
         self.uuid1 = None
         self.uuid2 = None
@@ -314,6 +351,13 @@ class disk:
         self.model_name = ""
         self.serial_no = ""
         pass
+
+    def find_partition(self, part_name):
+        for part in self.partitions:
+            if part.device_name == part_name:
+                return part
+            pass
+        return None
 
     def install_ubuntu(self, memsize, newhostname, grub_cfg_patch):
         ask_continue = True
@@ -482,6 +526,20 @@ class disk:
             pass
         pass
         
+
+    def unmount_partitions(self):
+        for part in self.partitions:
+            part.unmount()
+            pass
+        pass
+
+
+    def mount_partitions(self):
+        for part in self.partitions:
+            part.mount()
+            pass
+        pass
+
 
     def mount_disk(self):
         if self.mounted:
@@ -1041,6 +1099,82 @@ class disk:
         sys.stdout.flush()
         return 0
 
+
+    def get_byte_size(self):
+        if self.byte_size:
+            return self.byte_size
+
+        fdisk = subprocess.Popen(["fdisk", "-l", "-u", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = fdisk.communicate()
+
+        for line in out.split("\n"):
+            if line == "":
+                break
+            m = disk1_re.match(line)
+            if m:
+                self.byte_size = string.atoi(m.group(1))
+                print "# disk byte size %s = %d" % (m.group(1), self.byte_size)
+                break
+                pass
+            pass
+        return self.byte_size
+
+
+    def usb_installer_start_parted(self):
+        byte_size = self.get_byte_size()
+        sectors = byte_size / 512
+        part1_sectors = (750 * 1024 * 1024) / 512
+        part1_start = 2048
+        if part1_sectors + part1_start > (sectors / 2):
+            part1_sectors = (sectors / 2) - part1_start
+            pass
+        part1_end = part1_start + part1_sectors - 1
+        part2_start = part1_start + part1_sectors
+        part2_end = sectors - 1 
+        print "# byte size %d sectors %d part1_sectors %d" % (byte_size, sectors, part1_sectors)
+
+        args = ["parted", "-s", self.device_name, "unit", "s", "mklabel", "msdos", "mkpart", "primary", "fat32", "%d" % part1_start, "%d" % part1_end, "mkpart", "primary", "ext2", "%d" % part2_start, "%d" % part2_end, "set", "1", "boot", "on" ]
+        print "# %s" % ' '.join(args)
+        return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def usb_installer_refresh_partition(self):
+        # Disk to look at
+        fdisk = subprocess.Popen(["fdisk", "-l", "-u", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = fdisk.communicate()
+        if len(err) > 0:
+            print "999 " + err
+            return
+
+        looking_for_partition = False
+        self.partitions = []
+
+        for line in out.split("\n"):
+            if looking_for_partition:
+                m = part_re.match(line)
+                if m:
+                    part = partition()
+                    part.device_name = m.group(1)
+                    part.partition_type = m.group(2)
+                    self.partitions.append(part)
+                    pass
+                pass
+            else:
+                if line == "":
+                    looking_for_partition = True
+                    continue
+                pass
+            pass
+        pass
+
+
+    def install_mbr(self):
+        print "Install MBR to disk %s" % self.device_name
+        mbr = subprocess.Popen(["/sbin/install-mbr", "-f", "-r", self.device_name], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        (out, err) = mbr.communicate()
+        print "install-mbr out %s" % out
+        print "install-mbr err %s" % err
+        pass
+
     pass
 
 
@@ -1473,7 +1607,8 @@ def get_disks(list_mounted_disks, verbose):
                     current_disk = disk()
                     current_disk.device_name = disk_name
                     current_disk.mounted = mounted_devices.has_key(current_disk.device_name)
-                    current_disk.size = string.atoi(m.group(1)) / 1000000
+                    current_disk.byte_size = string.atoi(m.group(1))
+                    current_disk.size = current_disk.byte_size / 1000000
                     current_disk.sectors = string.atoi(m.group(1)) / 512
                     pass
                 pass
@@ -2633,9 +2768,14 @@ def triage_install():
         if has_network:
             triage_dlg.infobox("Contacting the installation server.")
             disk_images = get_net_disk_images()
+            triage_output = open(triage_txt, "a+")
+            print >> triage_output, "%d disk images found." % (len(disk_images))
+            triage_output.close()
         else:
             disk_images = []
             pass
+
+
 
         if has_network and len(disk_images) == 0:
             # If it's connected to a network but no disk images, then
@@ -3142,6 +3282,7 @@ class GUIInstaller():
         <menuitem action="Refresh"/>
         <menuitem action="Install"/>
         <menuitem action="Save"/>
+        <menuitem action="USB stick install"/>
         <menuitem action="Quit"/>
       </menu>
     </menubar>
@@ -3183,10 +3324,11 @@ class GUIInstaller():
         # Create actions
         actiongroup.add_actions([('Quit', gtk.STOCK_QUIT, '_Quit', None, 'Quit the Program', self.quit_cb),
                                  ('File', None, '_File')])
-        actiongroup.add_actions([('Choose', gtk.STOCK_OPEN, '_Choose image...', None, 'Choose disk image file', self.choose_image_file_cb),
-                                 ('Install', gtk.STOCK_APPLY, '_Install', None, 'Install', self.install_cb),
-                                 ('Save', gtk.STOCK_SAVE, '_Save', None, 'Save', self.save_cb),
-                                 ('Refresh', gtk.STOCK_REFRESH, '_Refresh', None, 'Refresh disk status', self.refresh_disks_cb)])
+        actiongroup.add_actions([('Choose', gtk.STOCK_OPEN, '_Choose image...', None, 'Choose disk image source', self.choose_image_file_cb),
+                                 ('Install', gtk.STOCK_APPLY, '_Install image', None, 'Install disk image', self.install_cb),
+                                 ('Save', gtk.STOCK_SAVE, '_Save disk image', None, 'Save disk image', self.save_cb),
+                                 ('USB stick install', gtk.STOCK_APPLY, '_USB stick install', None, 'USB stick install', self.usb_stick_install_cb),
+                                 ('Refresh', gtk.STOCK_REFRESH, '_Refresh disks', None, 'Refresh disk status', self.refresh_disks_cb)])
         actiongroup.get_action('Quit').set_property('short-label', '_Quit')
 
         # Add the actiongroup to the uimanager
@@ -3334,13 +3476,10 @@ class GUIInstaller():
         pass
 
     def install_cb(self, b):
-        self.start_installation()
+        self.start_installation("install")
         pass
 
-    def start_installation(self):
-
-        self.progress_table
-
+    def start_installation(self, install_command):
         if not self.image_file:
             self.choose_image_file()
             if not self.image_file:
@@ -3353,7 +3492,7 @@ class GUIInstaller():
         for disk_button in self.disk_buttons:
             disk_name = "/dev/%s" % disk_button.get_label()
             if disk_button.get_active() and disk_button.get_sensitive():
-                self.install_image(disk_name)
+                self.install_image(install_command, disk_name)
                 disk_button.set_active(False)
                 pass
             pass
@@ -3362,8 +3501,8 @@ class GUIInstaller():
         pass
 
 
-    def install_image(self, disk_name):
-        cmdline = "%s --install %s --target-disk %s" % (sys.argv[0], self.image_file, disk_name )
+    def install_image(self, install_command, disk_name):
+        cmdline = "%s --%s %s --target-disk %s" % (sys.argv[0], install_command, self.image_file, disk_name )
         cmd_args = shlex.split(cmdline)
         backend = subprocess.Popen(cmd_args, bufsize=1, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         read_set = [backend.stdout, backend.stderr]
@@ -3558,6 +3697,11 @@ class GUIInstaller():
             d.destroy()
             pass
         pass
+
+    def usb_stick_install_cb(self, b):
+        self.start_installation("usb-stick-install")
+        pass
+
     pass
 
 
@@ -3595,11 +3739,6 @@ def installer_backend(args):
         sys.exit(1)
         pass
         
-    index = 1
-    n_free_disk = 0
-    first_target = None
-    skipped = 0
-
     target = None
     for d in disks:
         if d.device_name == target_disk:
@@ -3659,6 +3798,392 @@ def installer_backend(args):
     sys.exit(0)
     pass
 
+# --------------------------------------------------------------------------------
+
+def usb_stick_installer_backend(args):
+    global mounted_devices, disk_images
+
+    fresh = True
+    mbr = True
+
+    print "001 Starting"
+    sys.stdout.flush()
+    iso_file = args['iso-file']
+    if iso_file == None:
+        print "999 ERROR: No ISO image file specified"
+        sys.exit(1)
+        return
+
+    target_disk = args['target-disk']
+
+    disks, usb_disks = get_disks(True, True)
+    disks = disks + usb_disks
+    if len(disks) == 0:
+        print "999 ERROR: no disks detected"
+        sys.exit(1)
+        pass
+
+    target = None
+    for d in disks:
+        if d.device_name == target_disk:
+            if mounted_devices.has_key(d.device_name):
+                print "999 ERROR: %s mounted" % d.device_name
+                sys.exit(1)
+                return
+            target = d
+            break
+        pass
+
+    if not target:
+        print "999 ERROR: no target disk found"
+        sys.exit(1)
+        pass
+
+    #
+    print "002 Unmounting target"
+    sys.stdout.flush()
+    target.force_unmount_disk()
+
+    print "003 Mounting ISO file"
+    sys.stdout.flush()
+    iso_mount_point = "/mnt/my_iso.%d" % os.getpid()
+    mount_iso_file(iso_file, iso_mount_point)
+    print "005 Mounting ISO file"
+    sys.stdout.flush()
+
+    if fresh:
+        print "006 Partitioning started"
+        sys.stdout.flush()
+        parted = target.usb_installer_start_parted()
+        (out, err) = parted.communicate()
+        if len(err) > 0:
+            print "999 ERROR: "+ err
+            sys.exit(1)
+            pass
+        if out[0:6] == "Error:":
+            print "999 %s" % out
+            sys.exit(1)
+            pass
+        print "# %s" % out
+        print "009 Refresh partitions"
+        sys.stdout.flush()
+        target.usb_installer_refresh_partition()
+        pass
+    else:
+        print "009 "
+        pass
+
+    sys.stdout.flush()
+
+    boot_part = None
+    ext2_part = None
+    print "010 Formatting partitions"
+    sys.stdout.flush()
+    for part in target.partitions:
+        mkfs = None
+        if part.partition_type == 'c':
+            print "012 Partitioning boot partition"
+            sys.stdout.flush()
+            boot_part = part
+            if fresh:
+                mkfs = part.start_mkfs("ubuntu")
+            else:
+                part.partition_name = "ubuntu"
+                pass
+        elif part.partition_type == '83':
+            print "013 Partitioning linux partition"
+            sys.stdout.flush()
+            ext2_part = part
+            if fresh:
+                mkfs = part.start_mkfs("casper-rw")
+            else:
+                part.partition_name = "casper-rw"
+                pass
+            pass
+
+        if mkfs:
+            progress = 14
+            progress_max = 18
+            n = 0
+            while mkfs.returncode is None:
+                time.sleep(0.3)
+                n = n + 1
+                if (n % 99) == 0:
+                    if progress < progress_max:
+                        progress = progress + 1
+                        sys.stdout.write("%03d" % progress) 
+                        sys.stdout.flush()
+                        pass
+                    pass
+                mkfs.poll()
+                pass
+            pass
+
+        pass
+
+    if not boot_part:
+        print "999 Boot parition is not found"
+        sys.exit(1)
+        pass
+
+    if not ext2_part:
+        print "999 Linux parition is not found"
+        sys.exit(1)
+        pass
+
+    if fresh:
+        print "019 Formatting complete"
+        pass
+
+    sys.stdout.flush()
+
+    target.mount_partitions()
+    print "020 Figuring out copying"
+
+    # make_copy_plan(srcdir, destdir):
+    srcdir = iso_mount_point
+    destdir = boot_part.get_mount_point()
+
+    root = root_node(srcdir)
+    root.walk()
+    destroot = root_node(destdir)
+    root.set_destination(destroot, False)
+    # need to filter out syslinux
+    dirs = []
+    for dir in root.dirs:
+        if dir.name == "isolinux":
+            dir.set_destination(syslinux_node(destroot, "syslinux"), True)
+            dirs.append(dir)
+        elif dir.name == "syslinux":
+            continue
+        else:
+            dir.set_destination(node(destroot, dir.name), True)
+            dirs.append(dir)
+            pass
+        pass
+    # dirs holds the dirs without syslinux
+    root.dirs = dirs
+    plan = root.generate_plan()
+
+    # execute_copy_plan
+
+    total_cost = 0
+    for step in plan:
+        if step[0] == 'dir':
+            cost = 2
+        else:
+            cost = (step[3] + 4095) / 4096 + 1 
+            pass
+        total_cost = total_cost + cost
+        pass
+    
+    print "020 Copying: 0%"
+    sys.stdout.flush()
+    sofar = 0
+    for step in plan:
+        percentage = (100 * sofar) / total_cost
+        print "%03d Copying %s" % ((20 + 68 * percentage / 100), step[2])
+        sys.stdout.flush()
+        if step[0] == 'dir':
+            cost = 2
+            if not os.path.exists(step[2]):
+                os.mkdir(step[2])
+                pass
+            shutil.copymode(step[1], step[2])
+        else:
+            cost = (step[3] + 4095) / 4096 + 1 
+            shutil.copy2(step[1], step[2])
+            pass
+        sofar = sofar + cost
+        percentage = (100 * sofar) / total_cost
+        print "%03d Copying %s" % ((20 + 68 * percentage / 100), step[2])
+        pass
+
+    sys.stdout.flush()
+    # End of plan execution
+
+    target.unmount_partitions()
+    print "089 Target disk unmounted" 
+    sys.stdout.flush()
+
+    if mbr:
+        print "090 Installing bootloader to %s" % boot_part.device_name
+        sys.stdout.flush()
+        boot_part.install_bootloader()
+
+        print "095 Installing MBR to %s" % target.device_name
+        sys.stdout.flush()
+        target.install_mbr()
+
+        pass
+
+    print "099 Unmounting ISO"
+    unmount_iso_file(iso_file, iso_mount_point)
+    sys.stdout.flush()
+    print "100 Complete"
+    sys.stdout.flush()
+    pass
+
+# --------------------------------------------------------------------------------
+# File copying util
+#
+
+class node:
+    def __init__(self, parent, name):
+        self.total_size = 0
+        self.file_size = 0
+        self.parent = parent
+        self.files = []
+        self.dirs = []
+        self.path = None
+        self.name = name
+        self.destination = None
+        pass
+
+    def get_full_path(self):
+        if not self.path:
+            self.path = os.path.join(self.parent.get_full_path(), self.name)
+            pass
+        return self.path
+
+    def walk(self):
+        path = self.get_full_path()
+        for entry in os.listdir(path):
+            entry_path = os.path.join(path, entry)
+            if os.path.isfile(entry_path):
+                self.file_size = self.file_size + os.path.getsize(entry_path)
+                self.files.append(entry)
+                pass
+            elif os.path.isdir(entry_path):
+                self.dirs.append(node(self, entry))
+                pass
+            pass
+        for dir in self.dirs:
+            dir.walk()
+            pass
+        pass
+
+    def get_total_file_size(self):
+        size = self.file_size
+        for dir in self.dirs:
+            size = size + dir.file_size
+            pass
+        return size
+
+
+    def set_destination(self, destnode, walk):
+        if self.destination != None:
+            return
+        self.destination = destnode
+        self.destination.total_size = self.total_size
+        self.destination.file_size = self.file_size
+        self.destination.files = self.files
+        if walk:
+            for dir in self.dirs:
+                partner = node(destnode, dir.name)
+                self.destination.dirs.append(partner)
+                dir.set_destination(partner, True)
+                pass
+            pass
+        pass
+
+
+    def print_plan(self, level):
+        print "%s%s -> %s" % (indentstr[0:level*2], self.get_full_path(), self.destination.get_full_path())
+        print "%sTotal size: %d" % (indentstr[0:level*2], self.file_size)
+        for file in self.files:
+            print "%s%s" % (indentstr[0:level*2], file)
+            pass
+        for dir in self.dirs:
+            dir.print_plan(level+1)
+            pass
+        pass
+
+
+    def get_destination_path(self, file):
+        return os.path.join(self.get_full_path(), file)
+
+
+    def generate_plan(self):
+        plan = []
+        src = self.get_full_path()
+        dst = self.destination.get_full_path()
+        plan.append(('dir', src, dst, 0))
+        for file in self.files:
+            srcfile = os.path.join(src, file)
+            dstfile = self.destination.get_destination_path(file)
+            plan.append(('copy', srcfile, dstfile, os.path.getsize(srcfile)))
+            pass
+        for dir in self.dirs:
+            plan = plan + dir.generate_plan()
+            pass
+        return plan
+
+    pass
+
+
+class root_node(node):
+    def __init__(self, path):
+        self.total_size = 0
+        self.file_size = 0
+        self.parent = None
+        self.files = []
+        self.dirs = []
+        self.path = path
+        self.name = None
+        self.destination = None
+        pass
+    
+
+    def get_full_path(self):
+        return self.path
+
+    def print_plan(self, level):
+        node.print_plan(self, level)
+        print "Grand total: %d" % self.get_total_file_size()
+        pass
+
+    pass
+
+
+class syslinux_node(node):
+    def __init__(self, parent, name):
+        self.total_size = 0
+        self.file_size = 0
+        self.parent = parent
+        self.files = []
+        self.dirs = []
+        self.path = None
+        self.name = name
+        self.destination = None
+        pass
+
+    def get_destination_path(self, file):
+        if file == "isolinux.cfg":
+            return os.path.join(self.get_full_path(), "syslinux.cfg")
+        elif file == "isolinux.bin":
+            return os.path.join(self.get_full_path(), "syslinux.bin")
+        return os.path.join(self.get_full_path(), file)
+
+    pass
+
+# --------------------------------------------------------------------------------
+def mount_iso_file(iso_file, iso_mount_point):
+    if not os.path.exists(iso_mount_point):
+        os.mkdir(iso_mount_point)
+        pass
+    mount = subprocess.Popen(["mount", "-o", "loop", iso_file, iso_mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = mount.communicate()
+    pass
+
+def unmount_iso_file(iso_file, iso_mount_point):
+    umount = subprocess.Popen(["umount", iso_mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (out, err) = umount.communicate()
+    os.rmdir(iso_mount_point)
+    pass
+
+# --------------------------------------------------------------------------------
+
 
 def usage(args):
     print '''install-ubuntu.py [COMMANDS] [OPTIONS]
@@ -3685,7 +4210,7 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "usb-stick-install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -3700,6 +4225,7 @@ if __name__ == "__main__":
 
     cmd = None
     args = {}
+    args["argv0"] = sys.argv[0]
     for opt, arg in opts:
         if opt == "--help":
             cmd = usage
@@ -3745,7 +4271,6 @@ if __name__ == "__main__":
             pass
         elif opt == "--gui":
             cmd = gui_install_image
-            args["argv0"] = sys.argv[0]
             pass
         elif opt == "--backend":
             cmd = installer_backend
@@ -3755,16 +4280,18 @@ if __name__ == "__main__":
             cmd = installer_backend
             args["image-file"] = arg
             pass
+        elif opt == "--usb-stick-install":
+            cmd = usb_stick_installer_backend
+            args["iso-file"] = arg
+            pass
         elif opt == "--target-disk":
             args["target-disk"] = arg
             pass
         elif opt == "--live-triage":
             cmd = live_triage
-            args["argv0"] = sys.argv[0]
             pass
         elif opt == "--live-triage-step-2":
             cmd = live_triage_step2
-            args["argv0"] = sys.argv[0]
             pass
         pass
 

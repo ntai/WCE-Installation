@@ -1,7 +1,9 @@
 #
 # The clonezilla live original CD
 #
-CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
+#CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
+CLONEZILLA_LIVE := clonezilla-live-20120620-precise.iso
+
 
 DIALOG := dialog_1.1-20111020-1_i386.deb
 PYTHON_DIALOG := python-dialog_2.7-1_all.deb
@@ -24,13 +26,12 @@ LIVEPATCHES := \
  fsimage/wce.py \
  fsimage/image-disk.py \
  fsimage/iserver-install.py \
- fsimage/etc/ocs/ocs-live.conf \
  fsimage/etc/default/console-setup \
  fsimage/opt/drbl/sbin/ocs-live-wce \
- fsimage/opt/drbl/conf/drbl.conf \
- fsimage/etc/apt/sources.list \
- fsimage/etc/network/interfaces \
- fsimage/etc/resolv.conf
+ fsimage/etc/ocs/ocs-live.conf
+# fsimage/opt/drbl/conf/drbl.conf
+# fsimage/etc/network/interfaces \
+# fsimage/etc/resolv.conf
 
 
 SOURCES := \
@@ -52,7 +53,8 @@ SOURCES := \
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
 
 $(CLONEZILLA_LIVE) :
-	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/20110113-maverick/clonezilla-live-20110113-maverick.iso -O $@
+	# wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/20110113-maverick/clonezilla-live-20110113-maverick.iso -O $@
+	wget http://files.smartfruit.com/wce/$(CLONEZILLA_LIVE) -O $@
 
 $(PYTHON_DIALOG) :
 	wget http://ubuntu.media.mit.edu/ubuntu/pool/universe/p/pythondialog/python-dialog_2.7-1_all.deb -O $@
@@ -60,7 +62,7 @@ $(PYTHON_DIALOG) :
 $(PYTHON_SUPPORT):
 	wget http://ubuntu.media.mit.edu/ubuntu/pool/universe/p/python-support/python-support_1.0.14ubuntu2_all.deb
 
-$(DIALOG) :
+$(DIALOG):
 	wget http://ubuntu.media.mit.edu/ubuntu/pool/universe/d/dialog/dialog_1.1-20111020-1_i386.deb
 
 
@@ -72,17 +74,17 @@ extract-cd: $(CLONEZILLA_LIVE)
 	sudo umount clonezilla_live
 	sudo rmdir clonezilla_live
 
-fsimage: extract-cd add-packages.sh wce/sources.list
+fsimage: extract-cd add-packages.sh 
 	-mkdir fsimage
 	-mkdir fsimage-temp
 	sudo mount -o loop extract-cd/live/filesystem.squashfs fsimage-temp
 	sudo cp -pR fsimage-temp/* ./fsimage
 	sudo umount fsimage-temp
 	rmdir fsimage-temp
-	sudo make fsimage/etc/apt/sources.list
 	sudo make fsimage/etc/resolv.conf
 	sudo ./add-packages.sh
 	sudo ./slim-fsimage.sh
+	sudo rm -f fsimage/etc/resolv.conf
 
 
 fsimage/wce.py: wce/install-ubuntu.py
@@ -106,8 +108,8 @@ fsimage/opt/drbl/sbin/ocs-live-wce: wce/ocs-live-wce
 fsimage/opt/drbl/conf/drbl.conf: wce/drbl.conf
 	sudo cp $< $@
 
-fsimage/etc/apt/sources.list: wce/sources.list
-	sudo cp $< $@
+#fsimage/etc/apt/sources.list: wce/sources.list
+#	sudo cp $< $@
 
 fsimage/etc/network/interfaces: wce/interfaces
 	sudo cp $< $@
@@ -249,6 +251,6 @@ prerequisits:
 
 debian:
 	wget -q http://drbl.org/GPG-KEY-DRBL -O- | sudo apt-key add -
-	echo "deb http://drbl.sourceforge.net/drbl-core drbl stable" > /tmp/drbl.list
-	sudo cp /tmp/drbl.list /etc/apt/sources.list.d/drbl.list
+	# echo "deb http://drbl.sourceforge.net/drbl-core drbl stable" > /tmp/drbl.list
+	# sudo cp /tmp/drbl.list /etc/apt/sources.list.d/drbl.list
 	sudo apt-get update

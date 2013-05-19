@@ -11,7 +11,8 @@ DRBL_SCRIPT_PATH="${DRBL_SCRIPT_PATH:-/opt/drbl/}"
 . $DRBL_SCRIPT_PATH/conf/drbl-ocs.conf
 . $DRBL_SCRIPT_PATH/sbin/ocs-functions
 
-# load the setting for clonezilla live.
+# load the setting for clonezilla live
+#
 [ -e /etc/ocs/ocs-live.conf ] && . /etc/ocs/ocs-live.conf
 
 # Get the live media mount point.
@@ -21,5 +22,3 @@ get_live_media_mnt_point
 ocs-live-env-prepare
 
 LC_ALL=$ocs_lang /usr/bin/python $ocs_live_extra_param
-
-
