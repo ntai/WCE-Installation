@@ -2737,13 +2737,17 @@ def triage_install():
 
             if has_network:
                 # The startup tried to start the eth0
-                subprocess.call("ifdown eth0", shell=True)
+                for eth_dev in eth_devices:
+                    subprocess.call("ifdown %s" % eth_dev, shell=True)
+                    pass
+                pass
                 has_network = False
+                time.sleep(3)
                 pass
 
-            file = open("/tmp/dhclient.conf", "w")
-            file.write(dhclient_conf)
-            file.close()
+            #file = open("/tmp/dhclient.conf", "w")
+            #file.write(dhclient_conf)
+            #file.close()
 
             while not has_network:
                 has_network = get_router_ip_address() != None
@@ -2751,7 +2755,8 @@ def triage_install():
                     break
                 triage_dlg.msgbox("Please connect the NIC to a router/hub and press RETURN")
                 for eth_dev in eth_devices:
-                    subprocess.call("dhclient -cf /tmp/dhclient.conf -1 %s" % eth_dev, shell=True)
+                    subprocess.call("ifup %s" % eth_dev, shell=True)
+                    # subprocess.call("dhclient -cf /tmp/dhclient.conf -1 %s" % eth_dev, shell=True)
                     has_network = get_router_ip_address() != None
                     if has_network:
                         break

@@ -2,7 +2,8 @@
 # The clonezilla live original CD
 #
 #CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
-CLONEZILLA_LIVE := clonezilla-live-20120620-precise.iso
+#CLONEZILLA_LIVE := clonezilla-live-20120620-precise.iso
+CLONEZILLA_LIVE := clonezilla-live-20130429-raring-i386.iso
 
 
 DIALOG := dialog_1.1-20111020-1_i386.deb
@@ -27,8 +28,8 @@ LIVEPATCHES := \
  fsimage/image-disk.py \
  fsimage/iserver-install.py \
  fsimage/etc/default/console-setup \
- fsimage/opt/drbl/sbin/ocs-live-wce \
- fsimage/etc/ocs/ocs-live.conf
+ fsimage/etc/ocs/ocs-live.conf \
+ fsimage/usr/sbin/ocs-live-wce
 # fsimage/opt/drbl/conf/drbl.conf
 # fsimage/etc/network/interfaces \
 # fsimage/etc/resolv.conf
@@ -81,6 +82,7 @@ fsimage: extract-cd add-packages.sh
 	sudo cp -pR fsimage-temp/* ./fsimage
 	sudo umount fsimage-temp
 	rmdir fsimage-temp
+	#
 	sudo make fsimage/etc/resolv.conf
 	sudo ./add-packages.sh
 	sudo ./slim-fsimage.sh
@@ -103,6 +105,9 @@ fsimage/etc/default/console-setup: wce/console-setup
 	sudo cp $< $@
 
 fsimage/opt/drbl/sbin/ocs-live-wce: wce/ocs-live-wce
+	sudo install -m 755 $< $@
+
+fsimage/usr/sbin/ocs-live-wce: wce/ocs-live-wce
 	sudo install -m 755 $< $@
 
 fsimage/opt/drbl/conf/drbl.conf: wce/drbl.conf
