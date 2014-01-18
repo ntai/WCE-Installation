@@ -22,7 +22,7 @@ except:
 
 installer_version = "0.66"
 
-wce_release_file = '/mnt/wce_install_target/etc/wce-release'
+wce_release_file_name = 'wce-release'
 
 fstab_template = '''# /etc/fstab: static file system information.
 #
@@ -350,6 +350,8 @@ class disk:
         self.is_usb = None
         self.model_name = ""
         self.serial_no = ""
+        self.mount_dir = "/mnt/wce_install_target.%d" % os.getpid()
+        self.wce_release_file = os.path.join(self.mount_dir, "etc", wce_release_file_name)
         pass
 
     def find_partition(self, part_name):
@@ -393,12 +395,12 @@ class disk:
             pass
         if addition_dir:
             print "Copying additional contents from directory %s" % addition_dir
-            subprocess.call("cp -prvP %s -t /mnt/wce_install_target" % addition_dir, shell=True)
+            subprocess.call("cp -prvP %s -t %s" % (addition_dir, self.mount_dir), shell=True)
             print "Additional contents copied."
             pass
         if addition_tar:
             print "Expanding additional tar file %s" % addition_tar
-            subprocess.call("tar -xv --directory /mnt/wce_install_target -f %s " % addition_tar, shell=True)
+            subprocess.call("tar -xv --directory %s -f %s " % (self.mount_dir, addition_tar), shell=True)
             print "Additional contents copied."
             pass
         pass
@@ -410,7 +412,7 @@ class disk:
             (out, err) = parted.communicate()
             if parted.returncode != 0:
                 if verbose:
-                    print "# disk partitioning (parted) failed."
+                    print "# %s disk partitioning (parted) failed." % (self.device_name)
                     sys.stderr.write(err)
                     pass
                 return parted.returncode
@@ -419,7 +421,7 @@ class disk:
             columns = disk_line.split(":")
             if columns[0] != self.device_name:
                 if verbose:
-                    print "# parted format changed!? Talk to Tai"
+                    print "# %s parted format changed!? Talk to Tai" % (self.device_name)
                     pass
                 sys.exit(1)
                 pass
@@ -430,7 +432,7 @@ class disk:
             sectors = self.sectors
             pass
         if verbose:
-            print "# Disk has %d sectors" % sectors
+            print "# %s Disk has %d sectors" % (self.device_name, sectors)
             pass
 
         # Everything is multiple of 8, so that 4k sector problem never happens
@@ -458,7 +460,7 @@ class disk:
 
         args = ["parted", "-s", self.device_name, "unit", "s", "mklabel", "msdos", "mkpart", "primary", "ext2", "2048", "%d" % part1_end, "mkpart", "extended", "%d" % part2_start, "%d" % part2_end, "mkpart", "logical", "linux-swap", "%d" % part5_start, "%d" % part5_end, "set", "1", "boot", "on" ]
         if verbose:
-            print "# Executing " + " ".join(args)
+            print "# %s Executing " % (self.device_name) + " ".join(args)
             pass
         parted = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         (out, err) = parted.communicate()
@@ -545,12 +547,12 @@ class disk:
         if self.mounted:
             return
 
-        # Mount it to /mnt/wce_install_target
-        if not os.path.exists("/mnt/wce_install_target"):
-            os.mkdir("/mnt/wce_install_target")
+        # Mount it to self.mount_dir
+        if not os.path.exists(self.mount_dir):
+            os.mkdir(self.mount_dir)
             pass
 
-        s4 = subprocess.Popen(["mount", "%s1" % self.device_name, "/mnt/wce_install_target"])
+        s4 = subprocess.Popen(["mount", "%s1" % self.device_name, self.mount_dir])
         s4.communicate()
 
         self.mounted = True
@@ -565,7 +567,7 @@ class disk:
 
         self.mount_disk()
 
-        os.chdir("/mnt/wce_install_target")
+        os.chdir(self.mount_dir)
 
         # Restore ubuntu 
         print "restore -- this takes about 10-20 minutes"
@@ -648,7 +650,7 @@ class disk:
 
 
     def finalize_disk(self, newhostname, grub_cfg_patch):
-        print "# Finalizing disk"
+        print "# %s Finalizing disk" % (self.device_name)
 
         blkid = subprocess.Popen(["blkid"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         out, err = blkid.communicate()
@@ -670,24 +672,29 @@ class disk:
         print "# Swap    %s5 - UUID: %s" % (self.device_name, self.uuid2)
         
         # patch up the restore
-        fstab = open("/mnt/wce_install_target/etc/fstab", "w")
+        fstab = open("%s/etc/fstab" % self.mount_dir, "w")
         fstab.write(fstab_template % (self.uuid1, self.uuid2))
         fstab.close()
+
+        print "# fstab done"
 
         #
         # New hostname
         #
         if newhostname:
             # Set up the /etc/hostname
-            hostname_file = open("/mnt/wce_install_target/etc/hostname", "w")
+            etc_hostname_filename = "%s/etc/hostname" % self.mount_dir
+            hostname_file = open(etc_hostname_filename, "w")
             hostname_file.write("%s\n" % newhostname)
             hostname_file.close()
+            print "# /etc/hostname done"
 
             # Set up the /etc/hosts file
-            hosts = open("/mnt/wce_install_target/etc/hosts", "r")
+            etc_hosts_filename = "%s/etc/hosts" % self.mount_dir
+            hosts = open(etc_hosts_filename, "r")
             lines = hosts.readlines()
             hosts.close()
-            hosts = open("/mnt/wce_install_target/etc/hosts", "w")
+            hosts = open(etc_hosts_filename, "w")
 
             this_host = re.compile(r"127\.0\.1\.1\s+[a-z_A-Z0-9]+\n")
             for line in lines:
@@ -699,26 +706,37 @@ class disk:
                     pass
                 pass
             hosts.close()
+            print "# /etc/hosts done"
+            sys.stdout.flush()
             pass
 
         #
         # Remove the persistent rules
         # 
-        retcode = subprocess.call("rm -f /mnt/wce_install_target/etc/udev/rules.d/70-persistent*", shell=True)
+        print "# rm -f %s/etc/udev/rules.d/70-persistent*" % self.mount_dir
+        sys.stdout.flush()
+        retcode = subprocess.call("rm -f %s/etc/udev/rules.d/70-persistent*" % self.mount_dir, shell=True)
 
         #
         # Remove the WCE follow up files
         # 
-        retcode = subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/computer-uuid", shell=True)
-        retcode = subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/access-timestamp", shell=True)
+        print "# rm -f %s/var/lib/world-computer-exchange/computer-uuid" % self.mount_dir
+        sys.stdout.flush()
+        retcode = subprocess.call("rm -f %s/var/lib/world-computer-exchange/computer-uuid" % self.mount_dir, shell=True)
+        print "# rm -f %s/var/lib/world-computer-exchange/access-timestamp" % self.mount_dir
+        sys.stdout.flush()
+        retcode = subprocess.call("rm -f %s/var/lib/world-computer-exchange/access-timestamp" % self.mount_dir, shell=True)
+
+        print "# removing some files done."
+        sys.stdout.flush()
 
         # It needs to do a few things before chroot
         # Try copy the /etc/resolve.conf
-        try:
-            shutil.copy2("/etc/resolv.conf", "/mnt/wce_install_target/etc/resolv.conf")
-        except:
-            # Not a big deal if it does not exist
-            pass
+        # try:
+        #     shutil.copy2("/etc/resolv.conf", "%s/etc/resolv.conf" % self.mount_dir)
+        # except:
+        #     # Not a big deal if it does not exist
+        #     pass
 
         # Now, chroot to the installing disk and do something more
 
@@ -737,7 +755,8 @@ class disk:
             pass
 
         #
-        chroot_and_exec(to_do, self.uuid1, grub_cfg_patch)
+        print "# calling chroot_and_exec for %s" % self.mount_dir
+        chroot_and_exec(self.mount_dir, to_do, self.uuid1, grub_cfg_patch)
 
         #
         # Patch up the grub.cfg just in case the "/dev/disk/by-uuid/%s" % 
@@ -748,10 +767,10 @@ class disk:
         #
         root_fs = "UUID=%s" % self.uuid1
         linux_re = re.compile(r'(\s+linux\s+[^ ]+\s+root=)([^ ]+)(\s+ro .*)')
-        grub_cfg_file = open("/mnt/wce_install_target/boot/grub/grub.cfg")
+        grub_cfg_file = open("%s/boot/grub/grub.cfg" % self.mount_dir)
         grub_cfg = grub_cfg_file.readlines()
         grub_cfg_file.close()
-        grub_cfg_file = open("/mnt/wce_install_target/boot/grub/grub.cfg", "w")
+        grub_cfg_file = open("%s/boot/grub/grub.cfg" % self.mount_dir, "w")
         for line in grub_cfg:
             m = linux_re.match(line)
             if m:
@@ -766,7 +785,7 @@ class disk:
 
     def create_wce_tag(self, image_file_name):
         # Set up the /etc/wce-release file
-        release = open(wce_release_file, "a+")
+        release = open(self.wce_release_file, "w+")
         print >> release, "wce-contents: %s" % get_filename_stem(image_file_name)
         print >> release, "installer-version: %s" % installer_version
         print >> release, "installation-date: %s" % datetime.datetime.isoformat( datetime.datetime.utcnow() )
@@ -809,7 +828,8 @@ class disk:
             pass
 
         self.mount_disk()
-        subprocess.call("rm -f /mnt/wce_install_target/var/lib/world-computer-exchange/access-timestamp /mnt/wce_install_target/var/lib/world-computer-exchange/computer-uuid /mnt/wce_install_target/etc/udev/rules.d/70-persistent-cd.rules /mnt/wce_install_target/etc/udev/rules.d/70-persistent-net.rules", shell=True)
+        rm_args = ["rm", "-f"] + [ "%s%s" % (self.mount_dir, filename) for filename in ["/etc/wce-release", "/var/lib/world-computer-exchange/access-timestamp", "/var/lib/world-computer-exchange/computer-uuid", "/etc/udev/rules.d/70-persistent-cd.rules", "/etc/udev/rules.d/70-persistent-net.rules"] ]
+        subprocess.call(rm_args)
 
         self.unmount_disk()
 
@@ -922,7 +942,7 @@ class disk:
         for i in range(0, 30):
             retcode = subprocess.call("sync", shell=True)
             time.sleep(0.5)
-            retcode = subprocess.call("umount  /mnt/wce_install_target", shell=True)
+            retcode = subprocess.call("umount %s" % self.mount_dir, shell=True)
             if retcode == 0:
                 self.mounted = False
                 return
@@ -949,11 +969,11 @@ class disk:
         installed = False
         for partition in self.partitions:
             if partition.partition_name == part1 and partition.partition_type == '83':
-                print "# Partition %s has the linux partition type" % partition.partition_name
+                print "# %s Partition %s has the linux partition type" % (self.device_name, partition.partition_name)
                 # The parition 
                 try:
                     self.mount_disk()
-                    if os.path.exists(wce_release_file):
+                    if os.path.exists(self.wce_release_file):
                         installed = True
                         pass
                     pass
@@ -1113,7 +1133,7 @@ class disk:
             m = disk1_re.match(line)
             if m:
                 self.byte_size = string.atoi(m.group(1))
-                print "# disk byte size %s = %d" % (m.group(1), self.byte_size)
+                print "# %s disk byte size %s = %d" % (self.device_name, m.group(1), self.byte_size)
                 break
                 pass
             pass
@@ -1131,10 +1151,10 @@ class disk:
         part1_end = part1_start + part1_sectors - 1
         part2_start = part1_start + part1_sectors
         part2_end = sectors - 1 
-        print "# byte size %d sectors %d part1_sectors %d" % (byte_size, sectors, part1_sectors)
+        print "# %s byte size %d sectors %d part1_sectors %d" % (self.device_name, byte_size, sectors, part1_sectors)
 
         args = ["parted", "-s", self.device_name, "unit", "s", "mklabel", "msdos", "mkpart", "primary", "fat32", "%d" % part1_start, "%d" % part1_end, "mkpart", "primary", "ext2", "%d" % part2_start, "%d" % part2_end, "set", "1", "boot", "on" ]
-        print "# %s" % ' '.join(args)
+        print "# %s %s" % (self.device_name, ' '.join(args))
         return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def usb_installer_refresh_partition(self):
@@ -1173,6 +1193,13 @@ class disk:
         (out, err) = mbr.communicate()
         print "install-mbr out %s" % out
         print "install-mbr err %s" % err
+        pass
+
+
+    def remove_mount_dir(self):
+        if os.path.exists(self.mount_dir) and os.path.isdir(self.mount_dir):
+            os.rmdir(self.mount_dir)
+            pass
         pass
 
     pass
@@ -1224,14 +1251,14 @@ class optical_drive:
     pass
 
 
-def chroot_and_exec(things_to_do, root_partition_uuid, grub_cfg_patch):
-    print "# chroot and execute"
+def chroot_and_exec(mount_dir, things_to_do, root_partition_uuid, grub_cfg_patch):
+    print "# %s chroot and execute" % mount_dir
     try:
-        subprocess.call("mount --bind /dev/ /mnt/wce_install_target/dev", shell=True)
+        subprocess.call("mount --bind /dev/ %s/dev" % mount_dir, shell=True)
     except:
         pass
 
-    install_script = open("/mnt/wce_install_target/tmp/install-grub", "w")
+    install_script = open("%s/tmp/install-grub" % mount_dir, "w")
     install_script.write("""#!/bin/sh
 echo "Here we go!"
 mount -t proc none /proc
@@ -1263,8 +1290,8 @@ umount /dev/pts
 
     install_script.close()
     
-    subprocess.call("chmod +x /mnt/wce_install_target/tmp/install-grub", shell=True)
-    chroot = subprocess.Popen(["/usr/sbin/chroot", "/mnt/wce_install_target", "/bin/sh", "/tmp/install-grub"], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    subprocess.call("chmod +x %s/tmp/install-grub" % mount_dir, shell=True)
+    chroot = subprocess.Popen(["/usr/sbin/chroot", "%s" % mount_dir, "/bin/sh", "/tmp/install-grub"], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
     (out, err) = chroot.communicate()
     if chroot.returncode == 0:
         print "# grub installation complete."
@@ -1272,7 +1299,7 @@ umount /dev/pts
         print out
         print err
         pass
-    subprocess.call("umount /mnt/wce_install_target/dev", shell=True)
+    subprocess.call("umount %s/dev" % mount_dir, shell=True)
     pass
 
 
@@ -3303,9 +3330,11 @@ class GUIInstaller():
 
     </ui>'''
       
-    def __init__(self):
+    def __init__(self, args):
         #
-        self.image_file = None
+        self.args = args
+        #
+        self.image_file = args['image-file'] if args.has_key('image-file') else None
 
         # Create the toplevel window
         self.window = gtk.Window()
@@ -3361,8 +3390,10 @@ class GUIInstaller():
 
         buttonbox = gtk.HButtonBox()
         self.disk_buttons = []
-        
-        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg", "sdh", "sdi", "sdj" ]:
+
+        #
+        disk_button_names = ["sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg", "sdh", "sdi", "sdj" ]
+        for name in disk_button_names:
             disk_button = gtk.CheckButton(name)
             self.disk_buttons.append(disk_button)
             disk_button.set_active(True)
@@ -3372,6 +3403,13 @@ class GUIInstaller():
 
         vbox.pack_start(buttonbox)
 
+        target_disk = self.args['target-disk'] if self.args.has_key('target-disk') else None
+        if target_disk:
+            for disk_button in self.disk_buttons:
+                disk_button.set_sensitive(disk_button.get_name() == target_disk)
+                disk_button.set_active(disk_button.get_name() == target_disk)
+                pass
+            pass
         
         liststore = gtk.ListStore(str, str, int)
         liststore.append(["Partitioning", "", 0])
@@ -3721,12 +3759,32 @@ def gui_install_image(args):
     pass
 
 def rooted_gui_install_image(args):
-    GUIInstaller()
+    gui = GUIInstaller(args)
     gtk.main()
+
+    if args.has_key('secondary-gui'):
+        gui.start_installation("install")
+        pass
+
     return
 
 
 def installer_backend(args):
+    try:
+        installer_backend_body(args)
+    except Exception, exc:
+        exception_out = traceback.format_exc()
+        for line in exception_out.split('\n'):
+            print "# " + line
+            pass
+        stack_out = traceback.format_stack()
+        for line in exception_out.split('\n'):
+            print "# " + line
+            pass
+        pass
+    pass
+
+def installer_backend_body(args):
     global mounted_devices, disk_images
 
     disk_image_file = args['image-file']
@@ -3768,36 +3826,45 @@ def installer_backend(args):
     new_id = uuidgen()
     newhostname = "wce%s" % new_id[1:8]
 
+    skip_to_finalize = False # for debugging
+
     print "010 Partitioning %s starting" % target.device_name
     sys.stdout.flush()
-    returncode = None
-    try:
-        returncode = target.partition_disk(memsize, False)
-    except mkfs_failed, e:
-        print "999 ERROR: File system creation failed" % target.device_name
-        sys.exit(1)
-        pass
-    if returncode != 0:
-        print "999 ERROR: Partioning failed" % target.device_name
-        sys.exit(1)
+    if not skip_to_finalize:
+        returncode = None
+        try:
+            returncode = target.partition_disk(memsize, False)
+        except mkfs_failed, e:
+            print "999 ERROR: File system creation failed on %s" % target.device_name
+            sys.exit(1)
+            pass
+        if returncode != 0:
+            print "999 ERROR: Partioning failed on %s" % target.device_name
+            sys.exit(1)
+            pass
         pass
     print "019 Partitioning completed"
     print "020 Restore disk image"
     sys.stdout.flush()
-    returncode = target.restore_disk_image_backend(disk_image_file)
-    if returncode != 0:
-        sys.exit(1)
+    if not skip_to_finalize:
+        returncode = target.restore_disk_image_backend(disk_image_file)
+        if returncode != 0:
+            sys.exit(1)
+            pass
         pass
     print "090 Finalizing disk"
     sys.stdout.flush()
     target.assign_uuid_to_partitions()
     target.mount_disk()
+    print "092 Finalizing disk - disk mounted"
+    sys.stdout.flush()
     target.finalize_disk(newhostname, patch_grub_cfg)
     print "095 Create WCE Tag"
     sys.stdout.flush()
     target.create_wce_tag(target.partclone_image)
     target.unmount_disk()
     print "099 Complete"
+    target.remove_mount_dir()
     print "100 Image installation successful"
     sys.stdout.flush()
     sys.exit(0)
@@ -4215,7 +4282,7 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "backend=", "install=", "usb-stick-install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "gui-image-file=", "backend=", "install=", "usb-stick-install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2", "secondary-gui"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -4277,6 +4344,9 @@ if __name__ == "__main__":
         elif opt == "--gui":
             cmd = gui_install_image
             pass
+        elif opt == "--gui-image-file":
+            args["image-file"] = arg
+            pass
         elif opt == "--backend":
             cmd = installer_backend
             args["image-file"] = arg
@@ -4297,6 +4367,9 @@ if __name__ == "__main__":
             pass
         elif opt == "--live-triage-step-2":
             cmd = live_triage_step2
+            pass
+        elif opt == "--secondary-gui":
+            args["secondary-gui"] = True
             pass
         pass
 
