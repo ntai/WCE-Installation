@@ -159,6 +159,16 @@ retry 0;
 initial-interval 1;
 '''
 
+etc_network_interfaces = '''
+auto lo
+iface lo inet loopback
+iface eth0 inet dhcp
+iface eth1 inet dhcp
+iface eth2 inet dhcp
+'''
+
+
+
 lspci_nm_re = re.compile(r'\s*([0-9a-f]{2}:[0-9a-f]{2}.[0-9a-f])\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"\s+"([0-9a-f]{4})"')
 
 disk_images = []
@@ -2762,31 +2772,47 @@ def triage_install():
             has_network = get_router_ip_address() != None
             (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
 
-            if has_network:
-                # The startup tried to start the eth0
-                for eth_dev in eth_devices:
-                    subprocess.call("ifdown %s" % eth_dev, shell=True)
-                    pass
-                pass
-                has_network = False
-                time.sleep(3)
+            restore_interfaces = False
+            try:
+                os.rename("/etc/network/interfaces", "/etc/network/interfaces.original")
+                restore_interfaces = True
+            except:
                 pass
 
-            #file = open("/tmp/dhclient.conf", "w")
-            #file.write(dhclient_conf)
-            #file.close()
+            try:
+                iface_file = open("/etc/network/interfaces", "w")
+                iface_file.write(etc_network_interfaces)
+                iface_file.close()
 
-            while not has_network:
-                has_network = get_router_ip_address() != None
                 if has_network:
-                    break
-                triage_dlg.msgbox("Please connect the NIC to a router/hub and press RETURN")
-                for eth_dev in eth_devices:
-                    subprocess.call("ifup %s" % eth_dev, shell=True)
-                    # subprocess.call("dhclient -cf /tmp/dhclient.conf -1 %s" % eth_dev, shell=True)
+                    # The startup tried to start the eth0
+                    for eth_dev in eth_devices:
+                        subprocess.call("ifdown %s" % eth_dev, shell=True)
+                        pass
+                    has_network = False
+                    time.sleep(3)
+                    pass
+
+                while not has_network:
                     has_network = get_router_ip_address() != None
                     if has_network:
                         break
+                    triage_dlg.msgbox("Please connect the NIC to a router/hub and press RETURN")
+                    for eth_dev in eth_devices:
+                        subprocess.call("ifup %s" % eth_dev, shell=True)
+                        has_network = get_router_ip_address() != None
+                        if has_network:
+                            break
+                        pass
+                    pass
+                pass
+            finally:
+                if restore_interfaces:
+                    try:
+                        os.unlink("/etc/network/interfaces")
+                    except:
+                        pass
+                    os.rename("/etc/network/interfaces.original", "/etc/network/interfaces")
                     pass
                 pass
 

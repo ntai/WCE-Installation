@@ -548,9 +548,7 @@ def get_usb_disks():
     return usb_disks
 
 
-def main(fresh, mbr, iso_file):
-    global dlg
-
+def usb_writer(fresh, mbr, iso_file):
     usb_disks = get_usb_disks()
     if len(usb_disks) == 0:
         print "Did not find any USB disks."
@@ -648,17 +646,339 @@ def main(fresh, mbr, iso_file):
     pass
 
 
+try:
+    import pygtk
+    import gtk
+except:
+    pass
+
+
+class gui_writer():
+    ui = '''<ui>
+    <menubar name="MenuBar">
+      <menu action="File">
+        <menuitem action="Choose"/>
+        <menuitem action="Refresh"/>
+        <menuitem action="Install"/>
+        <menuitem action="Quit"/>
+      </menu>
+    </menubar>
+
+    <toolbar name="Toolbar">
+      <toolitem action="Choose"/>
+      <toolitem action="Refresh"/>
+      <toolitem action="Install"/>
+      <toolitem action="Quit"/>
+      <separator/>
+    </toolbar>
+
+    </ui>'''
+      
+    def __init__(self):
+        #
+        self.image_file = None
+
+        # Create the toplevel window
+        self.window = gtk.Window()
+        self.window.connect('destroy', lambda w: gtk.main_quit())
+        self.window.set_size_request(500, -1)
+        vbox = gtk.VBox()
+        self.window.add(vbox)
+
+        # Create a UIManager instance
+        uimanager = gtk.UIManager()
+        self.uimanager = uimanager
+
+        # Add the accelerator group to the toplevel window
+        accelgroup = uimanager.get_accel_group()
+        self.window.add_accel_group(accelgroup)
+
+        # Create an ActionGroup
+        actiongroup = gtk.ActionGroup('DiskImageInstaller')
+        self.actiongroup = actiongroup
+
+        # Create actions
+        actiongroup.add_actions([('Quit', gtk.STOCK_QUIT, '_Quit', None, 'Quit the Program', self.quit_cb),
+                                 ('File', None, '_File')])
+        actiongroup.add_actions([('Choose', gtk.STOCK_OPEN, '_Choose image...', None, 'Choose disk image file', self.choose_image_file_cb),
+                                 ('Install', gtk.STOCK_APPLY, '_Install', None, 'Install', self.install_cb),
+                                 ('Refresh', gtk.STOCK_REFRESH, '_Refresh', None, 'Refresh disk status', self.refresh_disks_cb)])
+        actiongroup.get_action('Quit').set_property('short-label', '_Quit')
+
+        # Add the actiongroup to the uimanager
+        uimanager.insert_action_group(actiongroup, 0)
+
+        # Add a UI description
+        uimanager.add_ui_from_string(self.ui)
+
+        # Create a MenuBar
+        menubar = uimanager.get_widget('/MenuBar')
+        vbox.pack_start(menubar, False)
+
+        # Create a Toolbar
+        toolbar = uimanager.get_widget('/Toolbar')
+        vbox.pack_start(toolbar, False)
+
+        # Create the image file
+        self.image_file_label = gtk.Label('Image file:')
+        self.image_file_label.set_alignment(0, 0.5)
+        vbox.pack_start(self.image_file_label)
+
+        disks_label = gtk.Label('Disks')
+        disks_label.set_alignment(0.5, 1.0)
+        vbox.pack_start(disks_label)
+
+        buttonbox = gtk.HButtonBox()
+        self.disk_buttons = []
+        
+        for name in ["sda", "sdb", "sdc", "sdd", "sde", "sdf", "sdg", "sdh", "sdi", "sdj" ]:
+            disk_button = gtk.CheckButton(name)
+            self.disk_buttons.append(disk_button)
+            disk_button.set_active(True)
+            disk_button.connect('toggled', self.toggle_disk)
+            buttonbox.pack_start(disk_button, False)
+            pass
+
+        vbox.pack_start(buttonbox)
+
+        
+        liststore = gtk.ListStore(str, str, int)
+        liststore.append(["Partitioning", "", 0])
+        liststore.append(["Imaging",      "", 0])
+        liststore.append(["Finalizing",   "", 0])
+        self.progress_table = liststore
+
+        treeview = gtk.TreeView(liststore)
+        
+        column_phase = gtk.TreeViewColumn("Activity")
+        treeview.append_column(column_phase)
+
+        column_status = gtk.TreeViewColumn("Status")
+        treeview.append_column(column_status)
+
+        column_progress = gtk.TreeViewColumn("Progress")
+        treeview.append_column(column_progress)
+
+        cell_phase_renderer = gtk.CellRendererText()
+        column_phase.pack_start(cell_phase_renderer, False)
+        column_phase.add_attribute(cell_phase_renderer, "text", 0)
+        
+        cell_status_renderer = gtk.CellRendererText()
+        column_status.pack_start(cell_status_renderer, False)
+        column_status.add_attribute(cell_status_renderer, "text", 1)
+
+        cell_progress_renderer = gtk.CellRendererProgress()
+        column_progress.pack_start(cell_progress_renderer, True)
+        column_progress.add_attribute(cell_progress_renderer, "value", 2)
+
+        vbox.pack_start(treeview)
+
+        self.window.show_all()
+
+        self.refresh_disks()
+        return
+
+    def toggle_disk(self, action):
+        # action has not toggled yet
+        return
+
+    def quit_cb(self, b):
+        gtk.main_quit()
+        pass
+
+    def choose_image_file_cb(self, b):
+        self.choose_image_file()
+        pass
+
+    def choose_image_file(self):
+        chooser = gtk.FileChooserDialog(parent=self.window,
+                                        title="Choose WCE Disk Image File",
+                                        action=gtk.FILE_CHOOSER_ACTION_OPEN,
+                                        buttons=(gtk.STOCK_CANCEL, gtk.RESPONSE_CANCEL, gtk.STOCK_OPEN, gtk.RESPONSE_OK))
+        chooser.set_current_folder("/var/www/wce-disk-images")
+
+        response = chooser.run()
+        if response == gtk.RESPONSE_OK:
+            self.image_file = chooser.get_filename()
+            self.image_file_label.set_text("Image file: %s" % self.image_file)
+            pass
+        chooser.destroy()
+        pass
+
+    def clear_status(self):
+        for row in range(0, 3):
+            which = self.progress_table.get_iter(row)
+            self.progress_table.set(which, 1, "")
+            self.progress_table.set(which, 2, 0)
+            pass
+        while gtk.events_pending():
+            gtk.main_iteration()
+            pass
+        pass
+
+
+    def refresh_disks_cb(self, b):
+        self.clear_status()
+        self.refresh_disks()
+        pass
+
+    def refresh_disks(self):
+        global mounted_devices, mounted_partitions
+        disks, usb_disks = get_disks(True, False)
+
+        all_disks = disks + usb_disks
+        table = {}
+        for disk in all_disks:
+            table[disk.device_name] = 1
+            pass
+
+        for disk_button in self.disk_buttons:
+            disk_name = "/dev/%s" % disk_button.get_label()
+            if table.has_key(disk_name):
+                disk_button.set_sensitive(True)
+                if mounted_devices.has_key(disk_name):
+                    disk_button.set_active(False)
+                else:
+                    disk_button.set_active(True)
+                    pass
+            else:
+                disk_button.set_active(False)
+                disk_button.set_sensitive(False)
+                pass
+            pass
+
+        pass
+
+    def install_cb(self, b):
+        self.start_installation()
+        pass
+
+    def start_installation(self):
+        self.progress_table
+        if not self.image_file:
+            self.choose_image_file()
+            if not self.image_file:
+                return
+            pass
+
+        install_button = self.uimanager.get_widget('/Toolbar/Install')
+        install_button.set_sensitive(False)
+
+        for disk_button in self.disk_buttons:
+            disk_name = "/dev/%s" % disk_button.get_label()
+            if disk_button.get_active() and disk_button.get_sensitive():
+                self.install_image(disk_name)
+                disk_button.set_active(False)
+                pass
+            pass
+
+        install_button.set_sensitive(True)
+        pass
+
+
+    def install_image(self, disk_name):
+        cmdline = "%s --install %s --target-disk %s" % (sys.argv[0], self.image_file, disk_name )
+        cmd_args = shlex.split(cmdline)
+        backend = subprocess.Popen(cmd_args, bufsize=1, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        read_set = [backend.stdout, backend.stderr]
+        write_set = []
+        progress_re = re.compile(r'(\d\d\d) (.*)')
+        stderr_data = ""
+        stdout_data = ""
+        rlist = []
+
+        while backend.poll() == None:
+            try:
+                rlist, wlist, xlist = select.select(read_set, write_set, [], 0.5)
+            except select.error, e:
+                if e.args[0] == errno.EINTR:
+                    continue
+                raise
+
+            if backend.stderr in rlist:
+                data = os.read(backend.stderr.fileno(), 1024)
+                if data == "":
+                    read_set.remove(backend.stderr)
+                    pass
+                else:
+                    pass
+                pass
+
+            if backend.stdout in rlist:
+                data = os.read(backend.stdout.fileno(), 1024)
+                if data == "":
+                    read_set.remove(backend.stdout)
+                    pass
+                else:
+                    sys.stdout.write(data)
+                    stdout_data = stdout_data + data
+                    lines = stdout_data.split('\n')
+                    stdout_data = lines[-1]
+                    lines = lines[:-1]
+                    for line in lines:
+                        m = progress_re.match(line)
+                        if m:
+                            progress = string.atof(m.group(1))
+                            if progress < 20:
+                                progress_min = 0
+                                progress_max = 19
+                                row = 0
+                                pass
+                            elif progress < 90:
+                                progress_min = 20
+                                progress_max = 89
+                                row = 1
+                                pass
+                            elif progress <= 100:
+                                progress_min = 90
+                                progress_max = 100
+                                row = 2
+                                pass
+                            elif progress > 900:
+                                row = 2
+                                pass
+
+                            which = self.progress_table.get_iter(row)
+                            self.progress_table.set(which, 1, m.group(2))
+                            if progress >= 900:
+                                self.progress_table.set(which, 2, 0)
+                            else:
+                                self.progress_table.set(which, 2, (100*(progress - progress_min)) / (progress_max - progress_min))
+                                pass
+                            if progress >= 100:
+                                break
+                            pass
+                        pass
+                    pass
+                pass
+
+            while gtk.events_pending():
+                gtk.main_iteration()
+                pass
+
+            pass
+        pass
+    pass
+
+
+
+def main(fresh, mbr, iso_file):
+    if os.getuid() == 0:
+        usb_writer(fresh, mbr, iso_file)
+        pass
+    else:
+        # Rerun the script with sudo
+        subprocess.call("gksudo -- python %s" % sys.argv[0], shell=True)
+        pass
+    pass
+
+
 if __name__ == "__main__":
     global dlg, iso_file, logfile
     logfile = open("log.txt", "w")
 
     dlg = dialog.Dialog()
     iso_file = None
-
-    if os.getuid() != 0:
-        dlg.msgbox("You need to be root to make a USB stick.")
-        sys.exit(1)
-        pass
 
     fresh = True
     mbr = True

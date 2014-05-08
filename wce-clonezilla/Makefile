@@ -29,7 +29,8 @@ LIVEPATCHES := \
  fsimage/iserver-install.py \
  fsimage/etc/default/console-setup \
  fsimage/etc/ocs/ocs-live.conf \
- fsimage/usr/sbin/ocs-live-wce
+ fsimage/usr/sbin/ocs-live-wce \
+ fsimage/etc/inetd.conf
 # fsimage/opt/drbl/conf/drbl.conf
 # fsimage/etc/network/interfaces \
 # fsimage/etc/resolv.conf
@@ -102,6 +103,9 @@ fsimage/etc/ocs/ocs-live.conf: wce/ocs-live.conf
 	sudo cp $< $@
 
 fsimage/etc/default/console-setup: wce/console-setup
+	sudo cp $< $@
+
+fsimage/etc/inetd.conf: wce/inetd.conf
 	sudo cp $< $@
 
 fsimage/opt/drbl/sbin/ocs-live-wce: wce/ocs-live-wce
