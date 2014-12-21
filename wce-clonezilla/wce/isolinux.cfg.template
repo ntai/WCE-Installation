@@ -34,7 +34,7 @@ label WCE Ubuntu installation
   TEXT HELP
   * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
   * VGA 800x600
-  * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
+  * Clonezilla live version: 20140915-trusty. (C) 2003-2014, NCHC, Taiwan
   * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
   ENDTEXT
 
@@ -48,7 +48,7 @@ label WCE Ubuntu installation (To RAM)
   TEXT HELP
   * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
   * VGA 800x600, Uses RAM and frees CD/USB stick. RAM >= 384MB.
-  * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
+  * Clonezilla live version: 20140915-trusty. (C) 2003-2014, NCHC, Taiwan
   * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
   ENDTEXT
 
@@ -56,22 +56,22 @@ label WCE Ubuntu installation (To RAM)
 label WCE Ubuntu installation VGA
   MENU LABEL WCE Triage/Ubuntu installation (VGA)
   kernel /live/vmlinuz
-  append initrd=/live/initrd.img boot=live hostname=maverick config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal acpi_enforce_resources=lax nosplash
+  append initrd=/live/initrd.img boot=live hostname=wce1 config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal acpi_enforce_resources=lax nosplash
   TEXT HELP
   * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
   * Normal VGA 640x480
-  * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
+  * Clonezilla live version: 20140915-trusty. (C) 2003-2014, NCHC, Taiwan
   * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
   ENDTEXT
 
 label WCE Ubuntu installation VGA, RAM
   MENU LABEL WCE Triage/Ubuntu installation (VGA, To RAM)
   kernel /live/vmlinuz
-  append initrd=/live/initrd.img boot=live hostname=maverick config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal acpi_enforce_resources=lax toram=filesystem.squashfs nosplash
+  append initrd=/live/initrd.img boot=live hostname=wce1 config noswap nolocales edd=on nomodeset ocs_live_run="ocs-live-wce" ocs_live_extra_param="/wce.py" ocs_live_keymap="" ocs_live_batch="yes" ocs_lang="" vga=normal acpi_enforce_resources=lax toram=filesystem.squashfs nosplash
   TEXT HELP
   * WCE Ubuntu Installer V###VERSION### - Modified Clonezilla
   * Normal VGA 640x480, Uses RAM and frees CD/USB stick. RAM >= 384MB.
-  * Clonezilla live version: 20110113-maverick. (C) 2003-2011, NCHC, Taiwan
+  * Clonezilla live version: 20140915-trusty. (C) 2003-2014, NCHC, Taiwan
   * Disclaimer: Clonezilla comes with ABSOLUTELY NO WARRANTY
   ENDTEXT
 

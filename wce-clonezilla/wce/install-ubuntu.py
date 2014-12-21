@@ -921,7 +921,7 @@ class disk:
                         pass
                     else:
                         while True:
-                            m = progress_re.match(partclone_error)
+                            m = progress_re.search(partclone_error)
                             if not m:
                                 break
                             partclone_error = partclone_error[len(m.group(0)):]
@@ -1036,15 +1036,16 @@ class disk:
         partclone_error = ""
 
         start_re = []
-        start_re.append(re.compile(r'Partclone [^ ]+ http://partclone.org\n'))
-        start_re.append(re.compile(r'Starting to restore image \([^\)]+\) to device \(/dev/\w+\)\n'))
-        start_re.append(re.compile(r'Calculating bitmap... Please wait... done!\n'))
-        start_re.append(re.compile(r'File system:\s+EXTFS\n'))
-        start_re.append(re.compile(r'Device size:\s+[\d.]+\s+GB\n'))
-        start_re.append(re.compile(r'Space in use:\s+[\d.]+\s+GB\n'))
-        start_re.append(re.compile(r'Free Space:\s+[\d.]+\s+MB\n'))
-        start_re.append(re.compile(r'Block size:\s+\d+\s+Byte\n'))
-        start_re.append(re.compile(r'Used block :\s+\d+\n'))
+        start_re.append(re.compile(r'Partclone [^ ]+ '))
+        start_re.append(re.compile(r'Starting to restore image \([^\)]+\) to device \(/dev/\w+\)'))
+        start_re.append(re.compile(r'Calculating bitmap... Please wait... done!'))
+        start_re.append(re.compile(r'File system:\s+EXTFS'))
+        start_re.append(re.compile(r'Device size:\s+'))
+        start_re.append(re.compile(r'Space in use:\s+'))
+        start_re.append(re.compile(r'Free Space:\s+'))
+        start_re.append(re.compile(r'Block size:\s+'))
+
+        start_blanks_re = re.compile(r'\s{80}')
         progress_re = re.compile(r'\r\s+\rElapsed: (\d\d:\d\d:\d\d), Remaining: (\d\d:\d\d:\d\d), Completed:\s+(\d+.\d*)%,\s+([^\/]+)/min,')
 
         while read_set:
@@ -1075,12 +1076,20 @@ class disk:
                     partclone_error = partclone_error + data
                     if len(start_re) > 0:
                         while len(start_re) > 0:
-                            m = start_re[0].match(partclone_error)
+                            if start_blanks_re.search(partclone_error) is not None:
+                                start_re = []
+                                break
+                            m = start_re[0].search(partclone_error)
                             if not m:
                                 break
                             start_re = start_re[1:]
                             partclone_error = partclone_error[len(m.group(0)):]
+
+                            if progress_re.search(partclone_error) is not None:
+                                start_re = []
+                                break
                             pass
+
                         if len(start_re) == 0:
                             print "021 Start imaging"
                             sys.stdout.flush()
@@ -1088,7 +1097,7 @@ class disk:
                         pass
                     else:
                         while True:
-                            m = progress_re.match(partclone_error)
+                            m = progress_re.search(partclone_error)
                             if not m:
                                 break
                             partclone_error = partclone_error[len(m.group(0)):]
