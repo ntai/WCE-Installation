@@ -20,7 +20,7 @@ try:
 except:
     pass
 
-installer_version = "0.66"
+installer_version = "0.72.0"
 
 wce_release_file_name = 'wce-release'
 

@@ -30,7 +30,8 @@ LIVEPATCHES := \
  live-image/etc/default/console-setup \
  live-image/etc/ocs/ocs-live.conf \
  live-image/usr/sbin/ocs-live-wce \
- live-image/etc/inetd.conf
+ live-image/etc/inetd.conf \
+ live-image/etc/init/failsafe.conf
 # live-image/opt/drbl/conf/drbl.conf
 # live-image/etc/network/interfaces \
 # live-image/etc/resolv.conf
@@ -88,6 +89,9 @@ live-image: iso-extract add-packages.sh
 	sudo ./slim-live-image.sh
 	sudo rm -f live-image/etc/resolv.conf
 
+
+live-image/etc/init/failsafe.conf: wce/failsafe.conf
+	sudo cp $< $@
 
 live-image/wce.py: wce/install-ubuntu.py
 	sudo cp $< $@
