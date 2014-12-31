@@ -166,13 +166,21 @@ def make_copy_plan(srcdir, destdir):
     root.walk()
     destroot = root_node(destdir)
     root.set_destination(destroot, False)
-    # need to filter out syslinux
-    dirs = []
+    # need to filter out syslinux?
+    has_isolinux = False
     for dir in root.dirs:
         if dir.name == "isolinux":
+            has_isolinux = True
+            pass
+        pass
+
+    dirs = []
+
+    for dir in root.dirs:
+        if dir.name == "isolinux" and has_isolinux:
             dir.set_destination(syslinux_node(destroot, "syslinux"), True)
             dirs.append(dir)
-        elif dir.name == "syslinux":
+        elif dir.name == "syslinux" and has_isolinux:
             continue
         else:
             dir.set_destination(node(destroot, dir.name), True)

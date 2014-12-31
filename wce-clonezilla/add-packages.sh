@@ -1,8 +1,8 @@
 #!/bin/sh
 
-mount --bind /dev/ ./live-image/dev
+mount --bind /dev/ ./live-image-original/dev
 
-cat > ./live-image/tmp/temp-chores <<EOF
+cat > ./live-image-original/tmp/temp-chores <<EOF
 #!/bin/sh
 mount -t proc none /proc
 mount -t sysfs none /sys
@@ -27,7 +27,7 @@ umount /sys || umount -lf /sys
 umount /dev/pts || umount -lf /dev/pts
 EOF
 
-chmod +x ./live-image/tmp/temp-chores
-/usr/sbin/chroot ./live-image  /bin/sh /tmp/temp-chores
+chmod +x ./live-image-original/tmp/temp-chores
+/usr/sbin/chroot ./live-image-original  /bin/sh /tmp/temp-chores
 sleep 2
-umount ./live-image/dev || umount -lf ./live-image/dev
+umount ./live-image-original/dev || umount -lf ./live-image-original/dev

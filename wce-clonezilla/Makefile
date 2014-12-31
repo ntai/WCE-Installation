@@ -31,7 +31,15 @@ LIVEPATCHES := \
  live-image/etc/ocs/ocs-live.conf \
  live-image/usr/sbin/ocs-live-wce \
  live-image/etc/inetd.conf \
- live-image/etc/init/failsafe.conf
+ live-image/etc/init/failsafe.conf \
+ live-image/usr/share/drbl/sbin/ocs-functions
+# live-image/etc/sudoers.d/live \
+# live-image/etc/passwd \
+# live-image/etc/shadow \
+# live-image/etc/group \
+# live-image/etc/gshadow \
+# live-image/home/user
+# live-image/etc/sudoers \
 # live-image/opt/drbl/conf/drbl.conf
 # live-image/etc/network/interfaces \
 # live-image/etc/resolv.conf
@@ -76,22 +84,34 @@ iso-extract: $(CLONEZILLA_LIVE)
 	sudo umount clonezilla_live
 	sudo rmdir clonezilla_live
 
-live-image: iso-extract add-packages.sh 
-	-mkdir live-image
+filesystem.squashfs: iso-extract
+	cp iso-extract/live/filesystem.squashfs filesystem.squashfs
+	chmod 444 filesystem.squashfs
+
+live-image-original: filesystem.squashfs add-packages.sh 
+	-mkdir live-image-original
 	-mkdir live-image-temp
-	sudo mount -o loop iso-extract/live/filesystem.squashfs live-image-temp
-	sudo cp -pR live-image-temp/* ./live-image
+	sudo mount -o loop filesystem.squashfs live-image-temp
+	sudo cp -pR live-image-temp/* ./live-image-original
 	sudo umount live-image-temp
 	rmdir live-image-temp
 	#
-	sudo make live-image/etc/resolv.conf
+	sudo make live-image-original/etc/resolv.conf
 	sudo ./add-packages.sh
-	sudo ./slim-live-image.sh
-	sudo rm -f live-image/etc/resolv.conf
+	sudo rm -f live-image-original/etc/resolv.conf
 
 
-live-image/etc/init/failsafe.conf: wce/failsafe.conf
+live-image: live-image-original ./slim-live-image.sh
+	-mkdir live-image
+	sudo cp -pR live-image-original/* ./live-image
+	sudo python ./slim-live-image.py
+
+live-image/usr/share/drbl/setup/files/gparted/usr/share/gparted/bin/gl-functions: wce/gl-functions
 	sudo cp $< $@
+
+live-image/home/user: 
+	sudo mkdir live-image/home/user
+	sudo chown 1000:1000 live-image/home/user
 
 live-image/wce.py: wce/install-ubuntu.py
 	sudo cp $< $@
@@ -104,6 +124,24 @@ live-image/iserver-install.py: wce/iserver-install.py
 
 live-image/etc/ocs/ocs-live.conf: wce/ocs-live.conf
 	sudo cp $< $@
+
+live-image/etc/sudoers: wce/sudoers
+	sudo install -m 440 $< $@
+
+live-image/etc/sudoers.d/live: wce/sudoers.d/live
+	sudo install -m 440 $< $@
+
+live-image/etc/passwd: wce/passwd
+	sudo install -m 644 $< $@
+
+live-image/etc/group: wce/group
+	sudo install -m 644 $< $@
+
+live-image/etc/shadow: wce/shadow
+	sudo install -m 640 $< $@
+
+live-image/etc/gshadow: wce/gshadow
+	sudo install -m 640 $< $@
 
 live-image/etc/default/console-setup: wce/console-setup
 	sudo cp $< $@
@@ -120,13 +158,16 @@ live-image/usr/sbin/ocs-live-wce: wce/ocs-live-wce
 live-image/opt/drbl/conf/drbl.conf: wce/drbl.conf
 	sudo cp $< $@
 
+live-image/usr/share/drbl/sbin/ocs-functions: wce/ocs-functions
+	sudo install -m 755 $< $@
+
 #live-image/etc/apt/sources.list: wce/sources.list
 #	sudo cp $< $@
 
 live-image/etc/network/interfaces: wce/interfaces
 	sudo cp $< $@
 
-live-image/etc/resolv.conf: /etc/resolv.conf
+live-image-original/etc/resolv.conf: /etc/resolv.conf
 	sudo cp -p $< $@
 
 
@@ -239,7 +280,8 @@ tftp: \
 .phony: clean
 
 clean:
-	sudo rm -fR iso-extract live-image live-image-temp clonezilla_live
+	-chmod 644 filesystem.squashfs
+	sudo rm -fR filesystem.squashfs iso-extract live-image live-image-original live-image-temp clonezilla_live
 	rm -f wce/filesystem.packages wce/filesystem.size
 	rm -f squashfs-installed genisoimage-installed
 

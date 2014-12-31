@@ -20,7 +20,7 @@ try:
 except:
     pass
 
-installer_version = "0.72.0"
+installer_version = "0.73.0"
 
 wce_release_file_name = 'wce-release'
 
@@ -294,6 +294,19 @@ def is_network_connected():
         pass
     return connected
             
+
+def write_text_to_triage(text):
+    triage_output = open(triage_txt, "a+")
+    triage_output.write(text)
+    triage_output.close()
+    pass
+
+
+def write_exception_to_triage(exc):
+    text = traceback.format_exc(exc)
+    write_text_to_triage(text)
+    pass
+    
 
 class partition:
     def __init__(self):
@@ -2231,7 +2244,7 @@ def detect_cpu_type():
     return cpu_class, cpu_cores, max_processor + 1, cpu_vendor, model_name, bogomips, cpu_speed
 
 
-def triage(output, live_system = False):
+def triage(live_system = False):
     global mounted_devices
     cpu_class, cpu_cores, n_processors, cpu_vendor, model_name, bogomips, cpu_speed = detect_cpu_type()
     # Try getting memory from dmidecode
@@ -2252,19 +2265,19 @@ def triage(output, live_system = False):
     triage_result = True
     
     subprocess.call("clear", shell=True)
-    print >> output, "CPU Level: P%d - %dMhz" % (cpu_class, cpu_speed)
-    print >> output, "  %s" % (model_name)
-    print >> output, "  Cores: %d cores, Bogomips: %s" % (cpu_cores, bogomips)
+    subprocess.call("rm -f %s" % triage_txt, shell=True)
+    text = "CPU Level: P%d - %dMhz\n  %s\n  Cores: %d cores, Bogomips: %s\n" % (cpu_class, cpu_speed, model_name, cpu_cores, bogomips)
+    write_text_to_triage(text)
 
     if ram_type == None:
         ram_type = "Unknown"
         pass
 
     if total_memory < 200:
-        print >> output, "RAM Type: %s  Size: %dMbytes -- INSTALL MORE MEMORY" % (ram_type, total_memory)
+        write_text_to_triage("RAM Type: %s  Size: %dMbytes -- INSTALL MORE MEMORY\n" % (ram_type, total_memory))
         triage_result = False
     else:
-        print >> output, "RAM Type: %s  Size: %dMbytes" % (ram_type, total_memory)
+        write_text_to_triage("RAM Type: %s  Size: %dMbytes\n" % (ram_type, total_memory))
         pass
 
     if len(rams) > 0:
@@ -2272,14 +2285,14 @@ def triage(output, live_system = False):
         for ram in rams:
             slots = slots + "  %s: %d MB" % (ram[0], ram[1])
             pass
-        print >> output, slots
+        write_text_to_triage(slots + "\n")
         pass
         
     if len(disks) == 0:
-        print >> output, "Hard Drive: NOT DETECTED -- INSTALL A DISK"
+        write_text_to_triage("Hard Drive: NOT DETECTED -- INSTALL A DISK\n")
         triage_result = False
     else:
-        print >> output, "Hard Drive:"
+        write_text_to_triage("Hard Drive:\n")
         good_disk = False
         for disk in disks:
             disk_msg = "     Device %s: size = %dGbytes  %s" % (disk.device_name, disk.size / 1000, disk.model_name)
@@ -2290,7 +2303,7 @@ def triage(output, live_system = False):
             else:
                 disk_msg += " - TOO SMALL"
                 pass
-            print >> output, disk_msg
+            write_text_to_triage(disk_msg + "\n")
             pass
         if not good_disk:
             triage_result = False
@@ -2299,54 +2312,52 @@ def triage(output, live_system = False):
 
     optical_drives = detect_optical_drives()
     if len(optical_drives) == 0:
-        print >> output, "Optical drive: ***** NO OPTICALS: INSTALL OPTICAL DRIVE *****"
+        write_text_to_triage("Optical drive: ***** NO OPTICALS: INSTALL OPTICAL DRIVE *****\n")
         triage_result = False
     else:
-        print >> output, "Optical drive:"
+        write_text_to_triage("Optical drive:\n")
         index = 1
         for optical in optical_drives:
-            print >> output, "    %d: %s %s" % (index, optical.vendor, optical.model_name)
-            print >> output, "       %s" % (optical.get_feature_string(", "))
+            write_text_to_triage("    %d: %s %s\n       %s\n" % (index, optical.vendor, optical.model_name, optical.get_feature_string(", ")))
             index = index + 1
             pass
         pass
 
     if n_nvidia > 0:
-        print >> output, "Video:     nVidia video card = %d" % n_nvidia
+        write_text_to_triage("Video:     nVidia video card = %d\n" % n_nvidia)
         pass
     if n_ati > 0:
-        print >> output, "Video:     ATI video card = %d" % n_ati
+        write_text_to_triage("Video:     ATI video card = %d\n" % n_ati)
         pass
     if n_vga > 0:
-        print >> output, "Video:     Video card = %d" % n_vga
+        write_text_to_triage("Video:     Video card = %d\n" % n_vga)
         pass
 
     if (n_nvidia + n_ati + n_vga) <= 0:
         triage_result = False
         if len(blacklisted_videos) > 0:
-            print >> output, "Remove or disable following video(s) because known to not work"
+            write_text_to_triage("Remove or disable following video(s) because known to not work\n")
             for video in blacklisted_videos:
-                print >> output, "    " + video
+                write_text_to_triage("    " + video + "\n")
                 pass
             pass
         pass
 
     if not len(eth_devices) > 0:
-        print >> output, "Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD"
+        write_text_to_triage("Ethernet card: NOT DETECTED -- INSTALL ETHERNET CARD\n")
         triage_result = False
         pass
     if len(bad_ethernet_cards) > 0:
-        print >> output, "Remove or disable following cards because known to not work"
+        write_text_to_triage("Remove or disable following cards because known to not work\n")
         for card in bad_ethernet_cards:
-            print >> output, "    " + card
+            write_text_to_triage("    " + card + "\n")
             pass
         pass
 
     if not sound_dev:
-        print >> output, "Sound card: NOT DETECTED -- INSTALL SOUND CARD"
+        write_text_to_triage("Sound card: NOT DETECTED -- INSTALL SOUND CARD\n")
         triage_result = False
         pass
-    
     return triage_result, disks, usb_disks
 
 
@@ -2402,8 +2413,6 @@ def live_triage_step2(cmd):
     dialog_width = 100
     dialog_height = 32
 
-    triage_output = open(triage_txt, "w")
-
     dlg = dialog.Dialog()
     dialog_rc = open(dialog_rc_filename, "w")
     dialog_rc.write(dialog_rc_failure_template)
@@ -2429,11 +2438,10 @@ def live_triage_step2(cmd):
     while True:
         # I do this extra work so that I can have a temp file.
         try:
-            triage_result, disks, usb_disks = triage(triage_output, live_system=True)
-        except:
-            traceback.print_exc(triage_output)
+            triage_result, disks, usb_disks = triage(live_system=True)
+        except Exception, exc:
+            write_exception_to_triage(exc)
             pass
-        triage_output.flush()
 
         result_displayed = False
 
@@ -2445,31 +2453,25 @@ def live_triage_step2(cmd):
             triage_dlg = failure_dlg
             pass
         dlg = triage_dlg
-        triage_output.close()
 
         try:
             if (not has_network) or (not triage_result):
                 triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
                 pass
             else:
-                triage_output = open(triage_txt)
-                report = triage_output.read()
-                triage_output.close()
+                report = read_file(triage_txt)
                 triage_dlg.infobox(report, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
                 pass
             result_displayed = True
-        except:
-            triage_output = open(triage_txt, "a+")
-            traceback.print_exc(triage_output)
-            triage_output.close()
+        except Exception, exc:
+            write_exception_to_triage(exc)
             pass        
 
         # See the disks contain WCE Ubuntu
-        triage_output = open(triage_txt, "a+")
         if os.path.exists("/etc/wce-release"):
-            print >> triage_output, "The machine has the WCE Ubuntu installed."
+            write_text_to_triage("The machine has the WCE Ubuntu installed.\n")
         else:
-            print >> triage_output, "The machine does not have the WCE Ubuntu installed. -- FAIL"
+            write_text_to_triage("The machine does not have the WCE Ubuntu installed. -- FAIL\n")
             triage_result = False
             pass
 
@@ -2485,8 +2487,7 @@ def live_triage_step2(cmd):
             time.sleep(5)
             pass
 
-        print >> triage_output, "Live network is working."
-        triage_output.close()
+        write_text_to_triage("Live network is working.\n")
         triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
 
         #
@@ -2494,7 +2495,6 @@ def live_triage_step2(cmd):
         #
 
         optical_result = True
-        triage_output = open(triage_txt, "a+")
         wce_path = os.path.dirname(cmd["argv0"])
         live_path = os.path.join(wce_path, "..", "live")
         initrd_path = os.path.join(live_path, "initrd.img")
@@ -2509,14 +2509,14 @@ def live_triage_step2(cmd):
 
         try:
             subprocess.check_call("md5sum %s | cut -d ' ' -f 1 > /tmp/initrd.img.md5" % initrd_path, shell=True)
-        except:
-            print >> triage_output, "Reading %s on CD did not succeed. -- FAIL\n" % initrd_path
+        except Exception, exc:
             optical_result = False
-            traceback.print_exc(triage_output)
+            write_text_to_triage("Reading %s on CD did not succeed. -- FAIL\n" % initrd_path)
+            write_exception_to_triage(exc)
             pass
 
         if not compare_files("/tmp/initrd.img.md5", os.path.join(wce_path, "initrd.img.md5")):
-            print >> triage_output, "Checksum %s on CD did not succeed. -- FAIL\n" % initrd_path
+            write_text_to_triage("Checksum %s on CD did not succeed. -- FAIL\n" % initrd_path)
             optical_result = False
             pass
 
@@ -2526,26 +2526,22 @@ def live_triage_step2(cmd):
 *********************************************
 '''
         triage_dlg.infobox(msg, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
-        triage_output.flush()
 
         try:
             subprocess.check_call("md5sum %s | cut -d ' ' -f 1 > /tmp/vmlinuz.md5" % vmlinuz_path, shell=True)
-        except:
-            print >> triage_output, "Reading %s on CD did not succeed. -- FAIL" % vmlinuz_path
+        except Exception, exc:
             optical_result = False
-            traceback.print_exc(triage_output)
-            pass
-            if status != 0:
-                pass
+            write_text_to_triage("Reading %s on CD did not succeed. -- FAIL\n" % vmlinuz_path)
+            write_exception_to_triage(exc)
             pass
 
         if not compare_files("/tmp/vmlinuz.md5", os.path.join(wce_path, "vmlinuz.md5")):
-            print >> triage_output, "Checksum %s on CD did not succeed. -- FAIL" % vmlinuz_path
+            write_text_to_triage("Checksum %s on CD did not succeed. -- FAIL\n" % vmlinuz_path)
             optical_result = False
             pass
 
         if optical_result:
-            print >> triage_output, "Checking CD passed."
+            write_text_to_triage("Checking CD passed.\n")
             pass
         else:
             triage_result = False
@@ -2560,18 +2556,16 @@ def live_triage_step2(cmd):
         if has_network:
             # If it's connected to a network.
             # it's probably hooked up to a random router.
-            print >> triage_output, "Triage is complete. If it passes the triage, it's ready to ship.\n"
-            triage_output.close()
+            write_text_to_triage("Triage is complete. If it passes the triage, it's ready to ship.\n")
             triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle="Triage conclusion")
             pass
         else:
             # It's an island triage
             if triage_result:
-                print >> triage_output, "Triage complete. Ready to install."
+                write_text_to_triage("Triage complete. Ready to install.\n")
             else:
-                print >> triage_output, "The machine did not pass the triage. Please fix it." 
+                write_text_to_triage("The machine did not pass the triage. Please fix it.\n" )
                 pass
-            triage_output.close()
             triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
             pass
 
@@ -2700,8 +2694,8 @@ def triage_install():
     # dialog must work, or else dead.
 
     has_network = None
+    dlg.gauge_start("Thank you for triaging. Please fill the form.", title="Checking network")
     if is_network_connected():
-        dlg.gauge_start("Thank you for triaging. Please fill the form.", title="Checking network")
         for i in range(0, 9):
             dlg.gauge_update(1+i*10, "Thank you for triaging. Please fill the form.", update_text=1)
             time.sleep(1)
@@ -2709,18 +2703,18 @@ def triage_install():
             if has_network:
                 break
             pass
-        dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
         time.sleep(1)
-        dlg.gauge_stop()
         pass
-            
+    else:
+        pass
+    dlg.gauge_update(100, "Thank you for triaging. Please fill the form.", update_text=1)
+    dlg.gauge_stop()
+
     triage_result = True
 
     while True:
         # I do this extra work so that I can have a temp file.
-        triage_output = open(triage_txt, "w")
-        triage_result, disks, usb_disks = triage(triage_output, live_system=False)
-        triage_output.close()
+        triage_result, disks, usb_disks = triage(live_system=False)
         result_displayed = False
 
         btitle = "Triage Output"
@@ -2737,14 +2731,13 @@ def triage_install():
                 triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
                 pass
             else:
-                triage_output = open(triage_txt)
-                report = triage_output.read()
-                triage_output.close()
+                report = read_file(triage_txt)
                 triage_dlg.infobox(report, width=76, height=20, cr_wrap=1, backtitle=btitle)
                 time.sleep(5)
                 pass
             result_displayed = True
-        except Exception, e:
+        except Exception, exc:
+            write_exception_to_triage(exc)
             traceback.print_exc(sys.stdout)
             pass
 
@@ -2759,9 +2752,7 @@ def triage_install():
             pass
 
         if len(installed_disks) > 0:
-            triage_output = open(triage_txt, "a+")
-            print >> triage_output, "The machine has the WCE Ubuntu installed in %s." % installed_disks[0].device_name
-            triage_output.close()
+            write_text_to_triage("The machine has the WCE Ubuntu installed in %s.\n" % installed_disks[0].device_name)
 
             # Ask whether or not to do the update-grub
             yesno = triage_dlg.yesno("The disk contains the WCE Ubuntu installed.\nDo you want to rerun the disk finalize? (recommended)", 7, 70)
@@ -2776,12 +2767,18 @@ def triage_install():
                     pass
                 print "Disk finalized."
                 pass
+            pass
+        else:
+            write_text_to_triage("The machine's disk is not the WCE Ubuntu.\n")
+            pass
 
-            # Looks like a disk is already installed.
-            has_network = get_router_ip_address() != None
-            (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
+        has_network = get_router_ip_address() != None
+        (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
 
-            restore_interfaces = False
+        restore_interfaces = False
+
+        # No poing if there is no devices to try.
+        if len(eth_devices) > 0:
             try:
                 os.rename("/etc/network/interfaces", "/etc/network/interfaces.original")
                 restore_interfaces = True
@@ -2824,49 +2821,44 @@ def triage_install():
                     os.rename("/etc/network/interfaces.original", "/etc/network/interfaces")
                     pass
                 pass
-
-            triage_output = open(triage_txt, "a+")
-            print >> triage_output, "Network is working."
-            triage_output.close()
-            triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
+            if has_network:
+                write_text_to_triage("Network is working.\n")
+            else:
+                write_text_to_triage("Network is not working.\n")
+                pass
+            pass
+        else:
+            write_text_to_triage("Network device does not exist.\n")
             pass
 
-        has_network = get_router_ip_address() != None
+        triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
+
+        disk_images = []
         if has_network:
             triage_dlg.infobox("Contacting the installation server.")
             disk_images = get_net_disk_images()
-            triage_output = open(triage_txt, "a+")
-            print >> triage_output, "%d disk images found." % (len(disk_images))
-            triage_output.close()
-        else:
-            disk_images = []
+            write_text_to_triage("%d disk images found.\n" % (len(disk_images)))
             pass
-
-
 
         if has_network and len(disk_images) == 0:
             # If it's connected to a network but no disk images, then
             # it's probably hooked up to a random router.
-            triage_output = open(triage_txt, "a+")
             if len(installed_disks) == 0:
-                print >> triage_output, "Triage is complete."
+                write_text_to_triage("Triage is complete.\n")
                 pass
             else:
-                print >> triage_output, "Triage is complete. If it passes the triage, it's ready to ship.\n"
+                write_text_to_triage("Triage is complete. If it passes the QA, it's ready to ship.\n")
                 pass
-            triage_output.close()
             triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle="Triage conclusion")
             triage_dlg.msgbox("Please turn off the computer.")
             pass
         elif (not has_network) and len(disk_images) == 0:
             # It's an island triage
-            triage_output = open(triage_txt, "a+")
             if triage_result:
-                print >> triage_output, "Triage complete. Ready to install."
+                write_text_to_triage("Triage complete. Ready to install.\n")
             else:
-                print >> triage_output, "The machine did not pass the triage. Please fix it." 
+                write_text_to_triage("The machine did not pass the triage. Please fix it.\n")
                 pass
-            triage_output.close()
             triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
             triage_dlg.msgbox("Please turn off the computer.")
             pass
