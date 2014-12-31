@@ -1,3 +1,5 @@
 #!/usr/bin/env python
 import os, sys, subprocess
-subprocess.call("/wce.py --image-disk", shell=True)
+command = [ "/wce.py", "--image-disk"]
+command += sys.argv[1:]
+subprocess.call(command)

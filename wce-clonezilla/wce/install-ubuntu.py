@@ -2913,18 +2913,25 @@ def image_disk(args):
     stem_name = "wce"
 
     has_network = None
+    nfs_server = args.get("nfs-server")
+
     if is_network_connected():
-        router_ip_address = get_router_ip_address()
-        if not router_ip_address:
-            sys.exit(1)
+        if nfs_server is None:
+            nfs_server = get_router_ip_address()
             pass
 
+        if not nfs_server:
+            print "NFS server is not available"
+            sys.exit(1)
+            pass
+        
         # Mount the NFS to /mnt/www
         if not os.path.exists("/mnt/www"):
             os.mkdir("/mnt/www")
             pass
 
-        subprocess.call("mount -t nfs %s:/var/www /mnt/www" % router_ip_address, shell=True)
+        print "Trying NFS server %s" % nfs_server
+        subprocess.call("mount -t nfs %s:/var/www /mnt/www" % nfs_server, shell=True)
 
         if not os.path.exists("/mnt/www/wce-disk-images"):
             print "NFS mount did not mount /mnt/www/wce-disk-images"
@@ -2932,16 +2939,6 @@ def image_disk(args):
         pass
 
     try:
-        (active_ethernet, bad_cards, eth_devices) = detect_ethernet()
-        if not active_ethernet:
-            print """
-************************************************************
-*        Ethernet Interface is not detected.               *
-************************************************************
-"""
-            pass
-
-
         disks, usb_disks = get_disks(False, True)
         disks = disks + usb_disks
         sources = []
@@ -4309,7 +4306,7 @@ def usage(args):
 
 if __name__ == "__main__":
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "gui-image-file=", "backend=", "install=", "usb-stick-install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2", "secondary-gui"])
+        opts, args = getopt.getopt(sys.argv[1:], "", ["image-disk", "nfs-server=", "install-iserver", "batch-install=", "no-unique-host", "force-installation", "check-installation", "update-grub", "wait-for-disk", "finalize-disk", "create-install-image=", "addition=", "addition-dir=", "addition-tar=", "help", "gui", "gui-image-file=", "backend=", "install=", "usb-stick-install=", "target-disk=", "save-install-image=", "source-disk=", "live-triage", "live-triage-step-2", "secondary-gui"])
     except getopt.GetoptError, err:
         # print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -4398,6 +4395,9 @@ if __name__ == "__main__":
         elif opt == "--secondary-gui":
             args["secondary-gui"] = True
             pass
+        elif opt == "--nfs-server":
+            args["nfs-server"] = arg
+            pass
         pass
 
     if cmd == batch_install:
@@ -4452,6 +4452,7 @@ if __name__ == "__main__":
             sys.exit(2)
             pass
         pass
+
 
     cmd(args)
     sys.exit(0)
