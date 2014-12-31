@@ -101,7 +101,7 @@ live-image-original: filesystem.squashfs add-packages.sh
 	sudo rm -f live-image-original/etc/resolv.conf
 
 
-live-image: live-image-original ./slim-live-image.sh
+live-image: live-image-original ./slim-live-image.py
 	-mkdir live-image
 	sudo cp -pR live-image-original/* ./live-image
 	sudo python ./slim-live-image.py
