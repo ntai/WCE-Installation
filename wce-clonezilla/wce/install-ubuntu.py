@@ -2358,6 +2358,13 @@ def triage(live_system = False):
         write_text_to_triage("Sound card: NOT DETECTED -- INSTALL SOUND CARD\n")
         triage_result = False
         pass
+    else:
+        try:
+            subprocess.Popen(["/lib/live/mount/medium/wce/test-sound-device"])
+            write_text_to_triage("Please connect a speaker. Sound is playing.\n")
+        except:
+            pass
+        pass
     return triage_result, disks, usb_disks
 
 
@@ -2489,6 +2496,26 @@ def live_triage_step2(cmd):
 
         write_text_to_triage("Live network is working.\n")
         triage_dlg.textbox(triage_txt, width=dialog_width, height=dialog_height, cr_wrap=1, backtitle=btitle)
+
+        #
+        # Checking sound
+        #
+
+        sound_dev = detect_sound_device()
+        sound_result = sound_dev
+
+        if not sound_dev:
+            sound_result = False
+            write_text_to_triage("Sound card: NOT DETECTED -- INSTALL SOUND CARD\n")
+            pass
+        else:
+            sound_result = True
+            try:
+                subprocess.Popen(["./test-sound-device"])
+                write_text_to_triage("Please connect a speaker. Sound is playing.\n")
+            except:
+                pass
+            pass
 
         #
         # Checking optical

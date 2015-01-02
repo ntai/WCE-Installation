@@ -1,0 +1,7 @@
+#!/bin/sh
+mp3dir=$(dirname $0)
+while true ; do 
+mpg123 -q $mp3dir/*.mp3 
+sleep 2
+done
+

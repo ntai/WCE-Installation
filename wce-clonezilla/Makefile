@@ -56,6 +56,8 @@ SOURCES := \
  iso-extract/wce/install-ubuntu.py \
  iso-extract/wce/initrd.img.md5 \
  iso-extract/wce/vmlinuz.md5 \
+ iso-extract/wce/test-sound-device \
+ iso-extract/wce/bensound-jazzcomedy.mp3 \
  iso-extract/wce/${PYTHON_DIALOG} \
  iso-extract/wce/${PYTHON_SUPPORT} \
  iso-extract/wce/${DIALOG}
@@ -184,6 +186,12 @@ iso-extract/wce/initrd.img.md5: iso-extract/live/initrd.img
 iso-extract/wce/vmlinuz.md5: iso-extract/live/vmlinuz
 	md5sum $< | cut -d ' ' -f 1 > /var/tmp/vmlinuz.md5
 	sudo cp /var/tmp/vmlinuz.md5 $@
+
+iso-extract/wce/test-sound-device: wce/test-sound-device
+	sudo install -m 755 $< $@
+
+iso-extract/wce/bensound-jazzcomedy.mp3: wce/bensound-jazzcomedy.mp3
+	sudo cp $< $@
 
 iso-extract/wce/install-ubuntu.py: wce/install-ubuntu.py
 	sudo install -m 755 $< $@
