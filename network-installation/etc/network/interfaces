@@ -1,0 +1,21 @@
+# interfaces(5) file used by ifup(8) and ifdown(8)
+auto lo
+iface lo inet loopback
+
+auto eth0
+iface eth0 inet manual
+  bond-master bond0
+  bond-primary eth0
+
+auto eth1
+iface eth1 inet manual
+  bond-master bond0
+
+auto bond0
+iface bond0 inet static
+  address 10.1.1.1
+  dns-nameservers 10.1.1.1
+  netmask 255.255.255.0
+  bond-mode active-backup
+  bond-miimon 100
+  bond-slaves none
