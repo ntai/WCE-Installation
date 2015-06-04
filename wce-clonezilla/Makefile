@@ -6,6 +6,10 @@
 #CLONEZILLA_LIVE := clonezilla-live-20130429-raring-i386.iso
 CLONEZILLA_LIVE := clonezilla-live-20140915-trusty-i386.iso
 
+#
+# These were needed for Ubuntu 12 because it fell off or
+# something'
+#
 DIALOG := dialog_1.2-20130928-1_i386.deb
 PYTHON_DIALOG := python-dialog_2.7-1_all.deb
 PYTHON_SUPPORT := python-support_1.0.15_all.deb
@@ -30,7 +34,6 @@ LIVEPATCHES := \
  live-image/etc/default/console-setup \
  live-image/etc/ocs/ocs-live.conf \
  live-image/usr/sbin/ocs-live-wce \
- live-image/etc/inetd.conf \
  live-image/etc/init/failsafe.conf \
  live-image/usr/share/drbl/sbin/ocs-functions
 # live-image/etc/sudoers.d/live \
@@ -58,18 +61,19 @@ SOURCES := \
  iso-extract/wce/vmlinuz.md5 \
  iso-extract/wce/test-sound-device \
  iso-extract/wce/bensound-jazzcomedy.mp3 \
- iso-extract/wce/${PYTHON_DIALOG} \
- iso-extract/wce/${PYTHON_SUPPORT} \
- iso-extract/wce/${DIALOG}
  ${DISKIMAGES}
+
+# iso-extract/wce/${DIALOG} \
+# iso-extract/wce/${PYTHON_DIALOG} \
+# iso-extract/wce/${PYTHON_SUPPORT} \
 
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
 
 $(CLONEZILLA_LIVE) :
 	wget http://files.smartfruit.com/wce/$(CLONEZILLA_LIVE) -O $@
 
-$(PYTHON_DIALOG) :
-	wget http://ubuntu.media.mit.edu/ubuntu/pool/main/p/pythondialog/$@ -O $@
+#$(PYTHON_DIALOG) :
+#	wget http://ubuntu.media.mit.edu/ubuntu/pool/main/p/pythondialog/$@ -O $@
 
 $(PYTHON_SUPPORT):
 	wget http://ubuntu.media.mit.edu/ubuntu/pool/main/p/python-support/$@ -O $@
@@ -294,7 +298,7 @@ clean:
 	rm -f squashfs-installed genisoimage-installed
 
 
-.phony: prerequisits debian
+.phony: prerequisits debian network-servers
 
 prerequisits:
 	if ! dpkg-query -s squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
@@ -316,3 +320,21 @@ debian:
 	# echo "deb http://drbl.sourceforge.net/drbl-core drbl stable" > /tmp/drbl.list
 	# sudo cp /tmp/drbl.list /etc/apt/sources.list.d/drbl.list
 	sudo apt-get update
+
+network-servers:
+	if ! dpkg-query -s make > /dev/null 2>&1 ; then sudo apt-get -y install make ; fi
+	if ! dpkg-query -s openbsd-inetd > /dev/null 2>&1 ; then sudo apt-get -y install openbsd-inetd ; fi
+	if ! dpkg-query -s openssh-server > /dev/null 2>&1 ; then sudo apt-get -y install openssh-server ; fi
+	if ! dpkg-query -s dnsmasq > /dev/null 2>&1 ; then sudo apt-get -y install dnsmasq ; fi
+	if ! dpkg-query -s lighttpd > /dev/null 2>&1 ; then sudo apt-get -y install lighttpd ; fi
+	if ! dpkg-query -s atftpd > /dev/null 2>&1 ; then sudo apt-get -y install atftpd ; fi
+	if ! dpkg-query -s git > /dev/null 2>&1 ; then sudo apt-get -y install git ; fi
+	if ! dpkg-query -s nfs-kernel-server > /dev/null 2>&1 ; then sudo apt-get -y install nfs-kernel-server ; fi
+	if ! dpkg-query -s vsftpd > /dev/null 2>&1 ; then sudo apt-get -y install vsftpd ; fi
+
+/etc/dnsmasq.conf: network/dnsmasq.conf
+	sudo cp -p $< $@
+
+
+network: network-servers /etc/network/interfaces /etc/dnsmasq.conf
+	# cp network/interfaces /etc/network/interfaces
