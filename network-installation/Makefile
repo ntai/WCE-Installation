@@ -18,7 +18,7 @@ default: $(TARGETS)
 	if ! dpkg-query -s nfs-kernel-server > /dev/null 2>&1 ; then sudo apt-get -y install nfs-kernel-server ; fi
 	if ! dpkg-query -s genisoimage > /dev/null 2>&1 ; then sudo apt-get -y install genisoimage ; fi
 	if ! dpkg-query -s lighttpd > /dev/null 2>&1 ; then sudo apt-get -y install lighttpd ; fi
-	if ! dpkg-query -s atfptd > /dev/null 2>&1 ; then sudo apt-get -y install atfptd ; fi
+	if ! dpkg-query -s atftpd > /dev/null 2>&1 ; then sudo apt-get -y install atftpd ; fi
 	if ! dpkg-query -s dnsmasq > /dev/null 2>&1 ; then sudo apt-get -y install dnsmasq ; fi
 
 
