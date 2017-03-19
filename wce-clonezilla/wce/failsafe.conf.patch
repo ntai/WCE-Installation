@@ -1,0 +1,48 @@
+*** 0.failsafe.conf	2017-03-19 10:55:34.609127210 -0400
+--- failsafe.conf	2017-03-19 10:56:23.645516063 -0400
+***************
+*** 23,38 ****
+      # failsafe' in rc-sysinit deserves consideration for mentioning in
+      # these messages. currently only static-network-up counts for that.
+  
+! 	sleep 20
+  
+      # Plymouth errors should not stop the script because we *must* reach
+      # the end of this script to avoid letting the system spin forever
+      # waiting on it to start.
+  	$PLYMOUTH message --text="Waiting for network configuration..." || :
+! 	sleep 40
+  
+! 	$PLYMOUTH message --text="Waiting up to 60 more seconds for network configuration..." || :
+! 	sleep 59
+  	$PLYMOUTH message --text="Booting system without full network configuration..." || :
+  
+      # give user 1 second to see this message since plymouth will go
+--- 23,38 ----
+      # failsafe' in rc-sysinit deserves consideration for mentioning in
+      # these messages. currently only static-network-up counts for that.
+  
+! 	sleep 3
+  
+      # Plymouth errors should not stop the script because we *must* reach
+      # the end of this script to avoid letting the system spin forever
+      # waiting on it to start.
+  	$PLYMOUTH message --text="Waiting for network configuration..." || :
+! 	sleep 3
+  
+! 	$PLYMOUTH message --text="Waiting up to 3 more seconds for network configuration..." || :
+! 	sleep 3
+  	$PLYMOUTH message --text="Booting system without full network configuration..." || :
+  
+      # give user 1 second to see this message since plymouth will go
+***************
+*** 41,44 ****
+      exec initctl emit --no-wait failsafe-boot
+  end script
+  
+! post-start exec	logger -t 'failsafe' -p daemon.warning "Failsafe of 120 seconds reached."
+--- 41,44 ----
+      exec initctl emit --no-wait failsafe-boot
+  end script
+  
+! post-start exec	logger -t 'failsafe' -p daemon.warning "Failsafe of 10 seconds reached."

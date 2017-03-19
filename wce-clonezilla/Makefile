@@ -4,7 +4,9 @@
 #CLONEZILLA_LIVE := clonezilla-live-20110113-maverick.iso
 #CLONEZILLA_LIVE := clonezilla-live-20120620-precise.iso
 #CLONEZILLA_LIVE := clonezilla-live-20130429-raring-i386.iso
-CLONEZILLA_LIVE := clonezilla-live-20140915-trusty-i386.iso
+
+CLONEZILLA_BRANCH := 20140915-trusty
+CLONEZILLA_LIVE := clonezilla-live-${CLONEZILLA_BRANCH}-i386.iso
 
 #
 # These were needed for Ubuntu 12 because it fell off or
@@ -70,7 +72,7 @@ SOURCES := \
 SQUASHFS_TOOLS := $(shell dpkg -l squashfs-tools 2>/dev/null)
 
 $(CLONEZILLA_LIVE) :
-	wget http://files.smartfruit.com/wce/$(CLONEZILLA_LIVE) -O $@
+	wget http://free.nchc.org.tw/clonezilla-live/alternative/oldstable/$(CLONEZILLA_BRANCH)/$(CLONEZILLA_LIVE) -O $@
 
 #$(PYTHON_DIALOG) :
 #	wget http://ubuntu.media.mit.edu/ubuntu/pool/main/p/pythondialog/$@ -O $@
@@ -91,6 +93,7 @@ iso-extract: $(CLONEZILLA_LIVE)
 	sudo rmdir clonezilla_live
 
 filesystem.squashfs: iso-extract
+	chmod 644 filesystem.squashfs
 	cp iso-extract/live/filesystem.squashfs filesystem.squashfs
 	chmod 444 filesystem.squashfs
 
@@ -173,6 +176,9 @@ live-image/usr/share/drbl/sbin/ocs-functions: wce/ocs-functions
 live-image/etc/network/interfaces: wce/interfaces
 	sudo cp $< $@
 
+live-image/etc/init/failsafe.conf: wce/failsafe.conf.patch
+	sudo patch $@ $<
+
 live-image-original/etc/resolv.conf: /etc/resolv.conf
 	sudo cp -p $< $@
 
@@ -194,7 +200,10 @@ iso-extract/wce/vmlinuz.md5: iso-extract/live/vmlinuz
 iso-extract/wce/test-sound-device: wce/test-sound-device
 	sudo install -m 755 $< $@
 
-iso-extract/wce/bensound-jazzcomedy.mp3: wce/bensound-jazzcomedy.mp3
+bensound-jazzcomedy.mp3:
+	wget http://www.bensound.com/royalty-free-music?download=jazzcomedy -O $@
+
+iso-extract/wce/bensound-jazzcomedy.mp3: bensound-jazzcomedy.mp3
 	sudo cp $< $@
 
 iso-extract/wce/install-ubuntu.py: wce/install-ubuntu.py
@@ -218,6 +227,7 @@ iso-extract/syslinux/isolinux.cfg: wce/isolinux.cfg.template version
 	rm -f wce/isolinux.cfg
 
 iso-extract/live/filesystem.squashfs: $(LIVEPATCHES)
+
 	if ! dpkg-query -s squashfs-tools > /dev/null 2>&1 ; then sudo apt-get -y install squashfs-tools ; fi
 	sudo chmod +w iso-extract/live/filesystem.packages
 	sudo chroot live-image dpkg-query -W --showformat='$${Package} $${Version}\n' > wce/filesystem.packages
