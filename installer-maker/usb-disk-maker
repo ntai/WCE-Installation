@@ -741,8 +741,11 @@ if __name__ == "__main__":
             pass
             
         (code, iso_file) = dlg.fselect(start_point , 20, 76)
+        print str(code)
+        print str(iso_file)
         if code != 0:
             dlg.infobox("No ISO selected.")
+            print "No ISO selected. code %s" % str(code)
             sys.exit(0)
             pass
         pass
@@ -753,21 +756,25 @@ if __name__ == "__main__":
         pass
 
     a_payload = None
-    payload_startpoint = "/var/www/wce-disk-images/"
+    payload_startpoint = "/var/www/wce-disk-images"
     for candidate in os.listdir(payload_startpoint):
-    	a_payload = os.path.join(payload_startpoint, candidate)
-        if a_payload.startswith("wce") and a_payload.endswith(".partclone.gz"):
+        if candidate.startswith("wce") and candidate.endswith(".partclone.gz"):
+            a_payload = os.path.join(payload_startpoint, candidate)
             break
         pass
 
     dlg.infobox("Choose payload")
+    time.sleep(2)
+    if a_payload == None:
+        a_payload = payload_startpoint
+        pass
     (code, a_payload) = dlg.fselect(a_payload , 20, 76)
     print code
     if code != 0:
         a_payload = None
         pass
 
-    print "iso file %s" % str(iso_file)
-    print "payload %s" % str(a_payload)
+    dlg.infobox("iso file %s\npayload %s" % (str(iso_file), str(a_payload)), 7, 70)
+    time.sleep(3)
     main(fresh, mbr, iso_file, a_payload)
     pass
