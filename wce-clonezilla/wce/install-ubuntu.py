@@ -6,7 +6,7 @@
 # The idea behind this is because, we want to have a single triage/installer
 # CD. 
 # For the triage, it picks up the machine vitals such as RAM, optical dirve
-# spec, hard disk capacity, CPU class designation. 
+ spec, hard disk capacity, CPU class designation. 
 # It also does the network detection by running dhclient so that it can
 # talk to the router.
 # 
@@ -20,7 +20,7 @@ try:
 except:
     pass
 
-installer_version = "0.73.0"
+installer_version = "0.74.1"
 
 wce_release_file_name = 'wce-release'
 
@@ -2830,7 +2830,9 @@ def triage_install():
                     has_network = get_router_ip_address() != None
                     if has_network:
                         break
-                    triage_dlg.msgbox("Please connect the NIC to a router/hub and press RETURN")
+            	    yesno = triage_dlg.yesno("Please connect the NIC to a router/hub and press RETURN. To proceed without this, hit cancel.", 7, 70)
+		    if yesno != 0:
+		        break
                     for eth_dev in eth_devices:
                         subprocess.call("ifup %s" % eth_dev, shell=True)
                         has_network = get_router_ip_address() != None

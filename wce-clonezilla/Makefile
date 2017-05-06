@@ -93,6 +93,7 @@ iso-extract: $(CLONEZILLA_LIVE)
 	sudo rmdir clonezilla_live
 
 filesystem.squashfs: iso-extract
+	-touch filesystem.squashfs
 	chmod 644 filesystem.squashfs
 	cp iso-extract/live/filesystem.squashfs filesystem.squashfs
 	chmod 444 filesystem.squashfs
