@@ -6,7 +6,7 @@
 # The idea behind this is because, we want to have a single triage/installer
 # CD. 
 # For the triage, it picks up the machine vitals such as RAM, optical dirve
- spec, hard disk capacity, CPU class designation. 
+# spec, hard disk capacity, CPU class designation. 
 # It also does the network detection by running dhclient so that it can
 # talk to the router.
 # 
@@ -1283,6 +1283,33 @@ class optical_drive:
     pass
 
 
+def start_sound_test():
+    global test_sound_device
+    test_sound_device = None
+    try:
+        test_sound_device = subprocess.Popen(["/lib/live/mount/medium/wce/test-sound-device"])
+        write_text_to_triage("Please connect a speaker. Sound is playing.\n")
+    except:
+        pass
+    pass
+
+def stop_sound_test():
+    global test_sound_device
+    if test_sound_device:
+        try:
+            test_sound_device.kill()
+        except:
+            pass
+        try:
+            test_sound_device.communicate()
+        except:
+            pass
+        pass
+        test_sound_device = None
+    subprocess.call("killall mpg123", shell=True)
+    pass
+
+
 def chroot_and_exec(mount_dir, things_to_do, root_partition_uuid, grub_cfg_patch):
     print "# %s chroot and execute" % mount_dir
     try:
@@ -2246,6 +2273,8 @@ def detect_cpu_type():
 
 def triage(live_system = False):
     global mounted_devices
+    global test_sound_device
+    test_sound_device = None
     cpu_class, cpu_cores, n_processors, cpu_vendor, model_name, bogomips, cpu_speed = detect_cpu_type()
     # Try getting memory from dmidecode
     ram_type = get_ram_type()
@@ -2359,11 +2388,7 @@ def triage(live_system = False):
         triage_result = False
         pass
     else:
-        try:
-            subprocess.Popen(["/lib/live/mount/medium/wce/test-sound-device"])
-            write_text_to_triage("Please connect a speaker. Sound is playing.\n")
-        except:
-            pass
+        start_sound_test()
         pass
     return triage_result, disks, usb_disks
 
@@ -2804,7 +2829,7 @@ def triage_install():
 
         restore_interfaces = False
 
-        # No poing if there is no devices to try.
+        # No point if there is no devices to try.
         if len(eth_devices) > 0:
             try:
                 os.rename("/etc/network/interfaces", "/etc/network/interfaces.original")
@@ -2830,7 +2855,7 @@ def triage_install():
                     has_network = get_router_ip_address() != None
                     if has_network:
                         break
-            	    yesno = triage_dlg.yesno("Please connect the NIC to a router/hub and press RETURN. To proceed without this, hit cancel.", 7, 70)
+            	    yesno = triage_dlg.yesno("Please connect the NIC to a router/hub and press RETURN to choose yes. To proceed without network, choose No.", 7, 70)
 		    if yesno != 0:
 		        break
                     for eth_dev in eth_devices:
@@ -2862,12 +2887,15 @@ def triage_install():
 
         triage_dlg.textbox(triage_txt, width=76, height=20, cr_wrap=1, backtitle=btitle)
 
+
         disk_images = []
         if has_network:
             triage_dlg.infobox("Contacting the installation server.")
             disk_images = get_net_disk_images()
             write_text_to_triage("%d disk images found.\n" % (len(disk_images)))
             pass
+
+	#
 
         if has_network and len(disk_images) == 0:
             # If it's connected to a network but no disk images, then
@@ -2906,9 +2934,16 @@ def triage_install():
         # Just fall through to the installation
         break
 
+    # Before installation, stop the sound, or else it drives me crazy
+    stop_sound_test()
+
     mount_usb_disks(usb_disks)
 
     print ""
+
+    #
+    # Run the installer
+    #
 
     try_hook("pre-installation")
     try:

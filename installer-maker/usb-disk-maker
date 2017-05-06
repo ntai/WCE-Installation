@@ -1,4 +1,9 @@
 #!/usr/bin/env python
+#
+# Version 0.2
+#
+# changes: added payload copying
+#
 
 import os, sys, subprocess, string, re, traceback, time, shutil
 
@@ -388,6 +393,8 @@ class disk:
         for part in self.partitions:
             if part.device_name == part_name:
                 return part
+            if part.partition_name == part_name:
+                return part
             pass
         return None
 
@@ -536,7 +543,7 @@ def get_usb_disks():
     return usb_disks
 
 
-def main(fresh, mbr, iso_file):
+def main(fresh, mbr, iso_file, payload):
     global dlg
 
     usb_disks = get_usb_disks()
@@ -553,7 +560,7 @@ def main(fresh, mbr, iso_file):
     if fresh:
         prompt = "Existing contents will be destroyed!"
     else:
-        prompt = "Updating payload"
+        prompt = "Updating usb-stick"
         pass
 
     (code, tag) = dlg.checklist(text=prompt,
@@ -612,12 +619,34 @@ def main(fresh, mbr, iso_file):
             pass
 
         disk.mount()
+
         dlg.infobox( "Figuring out copying")
         plan = make_copy_plan(iso_mount_point, boot_part.get_mount_point())
         print >> logfile, "===== COPY PLAN ====="
         print >> logfile, plan
         print >> logfile, "====================="
         execute_copy_plan(plan)
+
+        # Copy payload
+        if payload:
+            part = disk.find_partition("casper-rw")
+            if part:
+                mount_point = part.get_mount_point()
+                wce_disk_images = os.path.join(mount_point, "wce-disk-images")
+                if not os.path.exists(wce_disk_images):
+		    print >> logfile, "mkdir %s" % (wce_disk_images)
+                    os.mkdir(wce_disk_images)
+                    pass
+                dlg.infobox( "Copying payload. (will take long time)")
+		print >> logfile, "Copy %s to %s" % (payload, wce_disk_images)
+                import shutil
+                shutil.copy(payload, wce_disk_images)
+                pass
+	    else:
+		print >> logfile, "Did not find the casper-rw."
+		pass
+            pass
+
         dlg.infobox( "Finished copying")
         disk.unmount()
 
@@ -699,7 +728,7 @@ if __name__ == "__main__":
         iso_file = argv[0]
         pass
     else:
-        start_point = "/var/www/wce-disk-images"
+        start_point = "/var/www/wce-disk-images/"
         for home in os.listdir("/home"):
             a_downloads = "/home/%s/Downloads" % home
             if os.path.exists(a_downloads):
@@ -723,5 +752,22 @@ if __name__ == "__main__":
         sys.exit(0)
         pass
 
-    main(fresh, mbr, iso_file)
+    a_payload = None
+    payload_startpoint = "/var/www/wce-disk-images/"
+    for candidate in os.listdir(payload_startpoint):
+    	a_payload = os.path.join(payload_startpoint, candidate)
+        if a_payload.startswith("wce") and a_payload.endswith(".partclone.gz"):
+            break
+        pass
+
+    dlg.infobox("Choose payload")
+    (code, a_payload) = dlg.fselect(a_payload , 20, 76)
+    print code
+    if code != 0:
+        a_payload = None
+        pass
+
+    print "iso file %s" % str(iso_file)
+    print "payload %s" % str(a_payload)
+    main(fresh, mbr, iso_file, a_payload)
     pass

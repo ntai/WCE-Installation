@@ -1,7 +1,17 @@
-#!/bin/sh
+#!/bin/bash
+function cleanup {
+killall mpg123 > /dev/null 2>&1
+}
+trap cleanup EXIT
+
 mp3dir=$(dirname $0)
 while true ; do 
-mpg123 -q $mp3dir/*.mp3 
+mpg123 -q $mp3dir/*.mp3 &
+childpid=$!
+wait $childpid
+exitcode=$?
+if [ $exitcode != 0 ] ; then
+  break
+fi
 sleep 2
 done
-
