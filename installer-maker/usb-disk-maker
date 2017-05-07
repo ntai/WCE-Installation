@@ -85,10 +85,8 @@ class node:
             pass
         pass
 
-
-    def get_destination_path(self, file):
-        return os.path.join(self.get_full_path(), file)
-
+    def map_src_and_dest(self, src, file):
+        return (os.path.join(src, file), os.path.join(self.get_full_path(), file))
 
     def generate_plan(self):
         plan = []
@@ -96,8 +94,7 @@ class node:
         dst = self.destination.get_full_path()
         plan.append(('dir', src, dst, 0))
         for file in self.files:
-            srcfile = os.path.join(src, file)
-            dstfile = self.destination.get_destination_path(file)
+            (srcfile, dstfile) = self.destination.map_src_and_dest(src, file)
             plan.append(('copy', srcfile, dstfile, os.path.getsize(srcfile)))
             pass
         for dir in self.dirs:
@@ -144,12 +141,20 @@ class syslinux_node(node):
         self.destination = None
         pass
 
-    def get_destination_path(self, file):
+    def map_src_and_dest(self, src, file):
         if file == "isolinux.cfg":
-            return os.path.join(self.get_full_path(), "syslinux.cfg")
+            return (os.path.join(src, file), os.path.join(self.get_full_path(), "syslinux.cfg"))
         elif file == "isolinux.bin":
-            return os.path.join(self.get_full_path(), "syslinux.bin")
-        return os.path.join(self.get_full_path(), file)
+            return (os.path.join(src, file), os.path.join(self.get_full_path(), "syslinux.bin"))
+        elif file == "syslinux.cfg":
+            return (os.path.join(src, file), os.path.join(self.get_full_path(), "syslinux.not"))
+        elif file.endswith(".c32"):
+            srcfile = os.path.join("/usr/lib/syslinux", file)
+            if not os.path.exists(srcfile):
+                srcfile = os.path.join(src, file)
+                pass
+            return (srcfile, os.path.join(self.get_full_path(), file))
+        return (os.path.join(src, file), os.path.join(self.get_full_path(), file))
 
     pass
 
@@ -161,12 +166,23 @@ def make_copy_plan(srcdir, destdir):
     root.set_destination(destroot, False)
     # need to filter out syslinux
     dirs = []
+    has_syslinux = True
+    for dir in root.dirs:
+        if dir.name == "isolinux":
+            has_syslinux = False
+            break
+        pass
+
     for dir in root.dirs:
         if dir.name == "isolinux":
             dir.set_destination(syslinux_node(destroot, "syslinux"), True)
             dirs.append(dir)
         elif dir.name == "syslinux":
-            continue
+            if has_syslinux:
+                dir.set_destination(syslinux_node(destroot, "syslinux"), True)
+                dirs.append(dir)
+                pass
+            pass
         else:
             dir.set_destination(node(destroot, dir.name), True)
             dirs.append(dir)
@@ -225,7 +241,7 @@ def mount_iso_file(iso_file, iso_mount_point):
     pass
 
 def unmount_iso_file(iso_file, iso_mount_point):
-    print >> logfile, "umount %s %s" % (iso_file, iso_mount_point)
+    print >> logfile, "umount %s" % (iso_mount_point)
     umount = subprocess.Popen(["umount", iso_mount_point], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     (out, err) = umount.communicate()
     print >> logfile, "umount out: %s" % out
@@ -595,7 +611,7 @@ def main(fresh, mbr, iso_file, payload):
         ext2_part = None
         for part in disk.partitions:
             if fresh:
-                dlg.infobox( "Formatting %s" % part.device_name)
+                dlg.infobox( "Formatting %s (takes some time)" % part.device_name)
                 pass
             if part.partition_type == 'c':
                 boot_part = part
@@ -619,7 +635,6 @@ def main(fresh, mbr, iso_file, payload):
             pass
 
         disk.mount()
-
         dlg.infobox( "Figuring out copying")
         plan = make_copy_plan(iso_mount_point, boot_part.get_mount_point())
         print >> logfile, "===== COPY PLAN ====="
@@ -653,9 +668,11 @@ def main(fresh, mbr, iso_file, payload):
         if mbr:
             dlg.infobox( "Installing bootloader to %s" % boot_part.device_name)
             boot_part.install_bootloader()
+            print >> logfile, "Bootloader installed"
 
             dlg.infobox( "Installing MBR to %s" % disk.device_name)
             disk.install_mbr()
+            print >> logfile, "MBR installed"
             pass
         pass
 
@@ -697,6 +714,16 @@ if __name__ == "__main__":
             pass
         pass
 
+    check_syslinux = True
+    while check_mbr:
+        if os.path.exists("/usr/lib/syslinux/isolinux.bin"):
+            check_syslinux = False
+            pass
+        else:
+            subprocess.call("sudo apt-get install syslinux", shell=True)
+            pass
+        pass
+
     if os.getuid() != 0:
         subprocess.call("gksudo -- xterm -geometry 132x50 -e python " + " ".join(sys.argv), shell=True)
         sys.exit(0)
@@ -719,7 +746,7 @@ if __name__ == "__main__":
     if len(argv) > 0:
         if argv[0] == "-update":
             fresh = False
-            mbr = False
+            # mbr = False
             argv = argv[1:]
             pass
         pass
